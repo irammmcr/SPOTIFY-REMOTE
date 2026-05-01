@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>DJ REMOTE</title>
+
+<style>
+body {
+    background: #121212;
+    color: white;
+    font-family: Arial;
+    padding: 20px;
+}
+
+input, button {
+    width: 50%;
+    padding: 12px;
+    border-radius: 20px;
+    border: none;
+    margin-bottom: 10px;
+}
+
+button {
+    background: #1db954;
+    color: white;
+}
+
+.list {
+    margin-top: 20px;
+}
+
+.item {
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🎧 DJ IRAM</h2>
+
+<input id="name" placeholder="Tu nombre (opcional)">
+<input id="search" placeholder="Canción...">
+
+<button onclick="send('queue')">➕ Agregar a cola</button>
+<button onclick="send('now')">⚡ Reproducir ahora</button>
+
+<h3>▶ Reproduciendo</h3>
+<div id="now"></div>
+
+<h3>⏭ Cola</h3>
+<div id="queue" class="list"></div>
+
+<h3>📜 Historial</h3>
+<div id="history" class="list"></div>
+
+<script>
+async function send(mode) {
+    const name = document.getElementById("name").value || "Anónimo";
+    const q = document.getElementById("search").value;
+
+    if (!q) return;
+
+    await fetch(`/search?q=${encodeURIComponent(q)}&user=${encodeURIComponent(name)}&mode=${mode}`);
+    document.getElementById("search").value = "";
+}
+
+async function update() {
+    const res = await fetch("/state");
+    const data = await res.json();
+
+    document.getElementById("now").innerText =
+        data.nowPlaying
+            ? data.nowPlaying.name + " • " + data.nowPlaying.user
+            : "Nada";
+
+    document.getElementById("queue").innerHTML =
+        data.queue.map(x => `<div class="item">${x.name} • ${x.user}</div>`).join("");
+
+    document.getElementById("history").innerHTML =
+        data.history.map(x => `<div class="item">${x.name} • ${x.user}</div>`).join("");
+}
+
+setInterval(update, 1500);
+</script>
+
+</body>
+</html>
