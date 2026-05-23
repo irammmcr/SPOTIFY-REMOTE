@@ -18,6 +18,7 @@ let token = null;
 let queue = [];
 let history = [];
 let nowPlaying = null;
+let lastPingTime = Date.now(); // Rastreador de tiempo inactivo
 
 // 📁 archivo de memoria
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -35,6 +36,7 @@ function loadData() {
             queue = data.queue || [];
             history = data.history || [];
             nowPlaying = data.nowPlaying || null;
+            lastPingTime = data.lastPingTime || Date.now();
 
             console.log("💾 Datos cargados");
         }
@@ -51,7 +53,7 @@ function saveData() {
     try {
         fs.writeFileSync(
             DATA_FILE,
-            JSON.stringify({ queue, history, nowPlaying }, null, 2)
+            JSON.stringify({ queue, history, nowPlaying, lastPingTime }, null, 2)
         );
     } catch {
         console.log("❌ Error guardando datos");
@@ -191,13 +193,14 @@ app.get("/next", (req, res) => {
 // ============================
 
 app.post("/update-playing", (req, res) => {
-    const { name } = req.body;
+    const { name, artist } = req.body;
 
     if (name) {
         nowPlaying = {
             name,
-            user: "Spotify"
+            user: artist || "Desconocido" // Reemplazamos "Spotify" por el nombre del artista
         };
+        lastPingTime = Date.now(); // Reseteamos el reloj
         saveData();
     }
 
@@ -209,8 +212,34 @@ app.post("/update-playing", (req, res) => {
 // ============================
 
 app.get("/state", (req, res) => {
+    const now = Date.now();
+    const diffMs = now - lastPingTime;
+    const tenMinsMs = 10 * 60 * 1000; // 10 minutos en milisegundos
+
+    let currentPlaying = nowPlaying;
+
+    // Si pasaron más de 10 minutos desde el último ping
+    if (diffMs >= tenMinsMs) {
+        const diffMins = Math.floor(diffMs / 60000);
+        let timeOfflineStr = "";
+
+        if (diffMins < 60) {
+            timeOfflineStr = `${diffMins} mins`;
+        } else {
+            const diffHours = Math.floor(diffMins / 60);
+            const remMins = diffMins % 60;
+            timeOfflineStr = `${diffHours} hora(s)` + (remMins > 0 ? ` ${remMins} mins` : "");
+        }
+
+        // Sobrescribimos el objeto que se envía a la web temporalmente
+        currentPlaying = {
+            name: "Offline",
+            user: timeOfflineStr
+        };
+    }
+
     res.json({
-        nowPlaying,
+        nowPlaying: currentPlaying,
         queue,
         history
     });
@@ -223,5 +252,5 @@ app.get("/state", (req, res) => {
 loadData();
 
 app.listen(3000, "0.0.0.0", () => {
-    console.log("🔥 DJ Server con memoria + realtime");
+    console.log("🔥 DJ Server con memoria + realtime + timeout");
 });
