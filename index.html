@@ -1,57 +1,96 @@
-// Obtener qué DJ estamos viendo desde la URL (?dj=iram) o del localStorage
-const urlParams = new URLSearchParams(window.location.search);
-let currentDJ = urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remotify</title>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; }
+        h1 { margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #333; background: #282828; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: none; background: #1db954; color: white; font-weight: bold; cursor: pointer; }
+        .btn-now { background: #1ed760; }
+        .section { margin-top: 25px; background: #181818; padding: 15px; border-radius: 8px; }
+        .section h3 { margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 8px; }
+        .item { padding: 6px 0; border-bottom: 1px solid #282828; }
+    </style>
+</head>
+<body>
 
-// Actualizar el título principal
-document.querySelector("h1, .header, title").innerText = `DJ ${currentDJ.toUpperCase()}`;
+    <h1 id="titleDJ">🎧 DJ</h1>
 
-async function updateState() {
-    try {
-        const res = await fetch(`/api/dj/${currentDJ}/state`);
-        const data = await res.json();
+    <input type="text" id="userInput" placeholder="Tu nombre (opcional)">
+    <input type="text" id="songInput" placeholder="Canción...">
+    
+    <button onclick="sendTrack('queue')">➕ Agregar a cola</button>
+    <button class="btn-now" onclick="sendTrack('now')">⚡ Reproducir ahora</button>
 
-        // Actualizar Canción Actual
-        const now = data.nowPlaying;
-        if (now && now.name !== "Offline") {
-            document.getElementById("nowPlaying").innerText = `${now.name} • ${now.artist} (${now.user})`;
-        } else {
-            document.getElementById("nowPlaying").innerText = "Sin música activa en Spotify";
+    <div class="section">
+        <h3>► Reproduciendo</h3>
+        <div id="nowPlaying">Cargando...</div>
+    </div>
+
+    <div class="section">
+        <h3>⏩ Cola</h3>
+        <div id="queue">Cola vacía</div>
+    </div>
+
+    <div class="section">
+        <h3>📜 Historial</h3>
+        <div id="history">Sin historial</div>
+    </div>
+
+    <!-- ⚠️ AQUÍ ESTÁ LA ETIQUETA SCRIPT QUE FALTABA -->
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentDJ = urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
+
+        document.getElementById("titleDJ").innerText = `🎧 DJ ${currentDJ.toUpperCase()}`;
+
+        async function updateState() {
+            try {
+                const res = await fetch(`/api/dj/${currentDJ}/state`);
+                const data = await res.json();
+
+                const now = data.nowPlaying;
+                if (now && now.name !== "Offline") {
+                    document.getElementById("nowPlaying").innerText = `${now.name} • ${now.artist} (${now.user})`;
+                } else {
+                    document.getElementById("nowPlaying").innerText = "Sin música activa en Spotify";
+                }
+
+                const queueEl = document.getElementById("queue");
+                if (queueEl) {
+                    queueEl.innerHTML = (data.queue || []).map(item => `<div class="item">${item.name} • ${item.artist} (${item.user})</div>`).join("") || "Cola vacía";
+                }
+
+                const historyEl = document.getElementById("history");
+                if (historyEl) {
+                    historyEl.innerHTML = (data.history || []).map(item => `<div class="item">${item.name} • ${item.artist} (${item.user})</div>`).join("") || "Sin historial";
+                }
+            } catch (e) {
+                console.error("Error cargando estado:", e);
+            }
         }
 
-        // Actualizar Cola
-        const queueEl = document.getElementById("queue");
-        if (queueEl) {
-            queueEl.innerHTML = (data.queue || []).map(item => `<div>${item.name} • ${item.user}</div>`).join("") || "Cola vacía";
+        async function sendTrack(mode) {
+            const song = document.getElementById("songInput").value;
+            const user = document.getElementById("userInput").value || "Anónimo";
+            if (!song) return;
+
+            const res = await fetch(`/api/dj/${currentDJ}/search?q=${encodeURIComponent(song)}&user=${encodeURIComponent(user)}&mode=${mode}`);
+            const data = await res.json();
+
+            if (data.ok) {
+                document.getElementById("songInput").value = "";
+                updateState();
+            } else {
+                alert("No se encontró la canción o el DJ no tiene Spotify conectado.");
+            }
         }
 
-        // Actualizar Historial
-        const historyEl = document.getElementById("history");
-        if (historyEl) {
-            historyEl.innerHTML = (data.history || []).map(item => `<div>${item.name} • ${item.user}</div>`).join("") || "Sin historial";
-        }
-    } catch (e) {
-        console.error("Error cargando estado:", e);
-    }
-}
-
-async function sendTrack(mode) {
-    const song = document.getElementById("songInput").value;
-    const user = document.getElementById("userInput").value || "Anónimo";
-    if (!song) return;
-
-    const res = await fetch(`/api/dj/${currentDJ}/search?q=${encodeURIComponent(song)}&user=${encodeURIComponent(user)}&mode=${mode}`);
-    const data = await res.json();
-
-    if (data.ok) {
-        document.getElementById("songInput").value = "";
+        setInterval(updateState, 3000);
         updateState();
-    } else {
-        alert("No se encontró la canción o el DJ no tiene Spotify conectado.");
-    }
-}
-
-// Escuchar los clicks de los botones (Asegúrate de que los IDs coincidan con tu HTML)
-// En tus botones puedes poner onclick="sendTrack('queue')" y onclick="sendTrack('now')"
-
-setInterval(updateState, 3000);
-updateState();
+    </script>
+</body>
+</html>
