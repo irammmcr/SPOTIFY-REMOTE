@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remotify - Registro</title>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #181818; padding: 2rem; border-radius: 12px; width: 300px; text-align: center; }
+        input { width: 90%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #333; background: #282828; color: white; }
+        button { width: 98%; padding: 10px; margin-top: 10px; border-radius: 6px; border: none; background: #1db954; color: white; font-weight: bold; cursor: pointer; }
+        a { color: #1db954; font-size: 0.9rem; text-decoration: none; display: block; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Crear Cuenta</h2>
+        <input type="text" id="user" placeholder="Usuario (ej. iram)">
+        <input type="password" id="pass" placeholder="Contraseña">
+        <button onclick="register()">Registrarse</button>
+        <p id="msg" style="font-size: 0.8rem; color: #ff5555;"></p>
+        <a href="login.html">¿Ya tienes cuenta? Inicia sesión</a>
+    </div>
+
+    <script>
+        async function register() {
+            const username = document.getElementById("user").value;
+            const password = document.getElementById("pass").value;
+            const res = await fetch("/api/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                alert("¡Usuario creado! Ahora inicia sesión.");
+                window.location.href = "login.html";
+            } else {
+                document.getElementById("msg").innerText = data.error || "Error al registrar";
+            }
+        }
+    </script>
+</body>
+</html>
