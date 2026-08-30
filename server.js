@@ -8,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// 🔑 CONFIGURACIÓN
+// 🔑 CREDENCIALES
 const CLIENT_ID = process.env.CLIENT_ID || "5c6b12721f854e4ca3e00ea6c432b62f";
 const CLIENT_SECRET = process.env.CLIENT_SECRET || "1dd36b3cff78423b9363787733c89267";
 const REDIRECT_URI = process.env.REDIRECT_URI || "https://remotify.up.railway.app/callback";
@@ -30,7 +30,7 @@ const DATA_FILE = path.join(__dirname, "data.json");
 function loadData() {
     try {
         if (fs.existsSync(DATA_FILE)) {
-            const raw = fs.readFileSync(DATA_FILE);
+            const raw = fs.readFileSync(DATA_FILE, "utf8");
             const data = JSON.parse(raw);
             queue = data.queue || [];
             history = data.history || [];
@@ -38,8 +38,8 @@ function loadData() {
             userRefreshToken = data.userRefreshToken || null;
             console.log("💾 Datos cargados con éxito");
         }
-    } catch {
-        console.log("❌ Error cargando datos");
+    } catch (e) {
+        console.log("❌ Error cargando datos:", e.message);
     }
 }
 
@@ -49,8 +49,8 @@ function saveData() {
             DATA_FILE,
             JSON.stringify({ queue, history, nowPlaying, userRefreshToken }, null, 2)
         );
-    } catch {
-        console.log("❌ Error guardando datos");
+    } catch (e) {
+        console.log("❌ Error guardando datos:", e.message);
     }
 }
 
@@ -69,17 +69,19 @@ app.get("/callback", async (req, res) => {
     if (!code) return res.send("Error al obtener el código de Spotify");
 
     try {
+        const bodyParams = new URLSearchParams({
+            grant_type: "authorization_code",
+            code: code,
+            redirect_uri: REDIRECT_URI,
+        });
+
         const response = await fetch("https://accounts.spotify.com/api/token", {
             method: "POST",
             headers: {
                 "Authorization": "Basic " + Buffer.from(CLIENT_ID + ":" + CLIENT_SECRET).toString("base64"),
                 "Content-Type": "application/x-www-form-urlencoded",
             },
-            body: new URLSearchParams({
-                grant_type: "authorization_code",
-                code: code,
-                redirect_uri: REDIRECT_URI,
-            }),
+            body: bodyParams.toString(),
         });
 
         const data = await response.json();
@@ -101,16 +103,18 @@ async function refreshUserAccessToken() {
     if (!userRefreshToken) return null;
 
     try {
+        const bodyParams = new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: userRefreshToken,
+        });
+
         const response = await fetch("https://accounts.spotify.com/api/token", {
             method: "POST",
             headers: {
                 "Authorization": "Basic " + Buffer.from(CLIENT_ID + ":" + CLIENT_SECRET).toString("base64"),
                 "Content-Type": "application/x-www-form-urlencoded",
             },
-            body: new URLSearchParams({
-                grant_type: "refresh_token",
-                refresh_token: userRefreshToken,
-            }),
+            body: bodyParams.toString(),
         });
 
         const data = await response.json();
@@ -123,7 +127,7 @@ async function refreshUserAccessToken() {
             return userAccessToken;
         }
     } catch (e) {
-        console.log("❌ Error renovando token:", e);
+        console.log("❌ Error renovando token:", e.message);
     }
     return null;
 }
@@ -164,7 +168,7 @@ async function updateCurrentlyPlaying() {
                 uri: track.uri,
                 name: track.name,
                 artist: track.artists.map(a => a.name).join(", "),
-                albumCover: track.album.images[0]?.url || "",
+                albumCover: track.album && track.album.images && track.album.images[0] ? track.album.images[0].url : "",
                 isPlaying: data.is_playing,
                 progress_ms: data.progress_ms,
                 duration_ms: track.duration_ms,
@@ -193,7 +197,7 @@ function scoreTrack(track, query) {
     if (name.includes(q)) score += 50;
     if (artist.includes(q)) score += 20;
 
-    score += track.popularity / 2;
+    score += (track.popularity || 0) / 2;
     return score;
 }
 
@@ -236,7 +240,7 @@ app.get("/search", async (req, res) => {
             uri: track.uri,
             name: track.name,
             artist: track.artists.map(a => a.name).join(", "),
-            albumCover: track.album.images[0]?.url || "",
+            albumCover: track.album && track.album.images && track.album.images[0] ? track.album.images[0].url : "",
             user
         };
 
