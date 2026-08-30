@@ -16,16 +16,11 @@ const REDIRECT_URI = process.env.REDIRECT_URI || "https://remotify.up.railway.ap
 let userRefreshToken = null;
 let userAccessToken = null;
 
-// 🔥 SISTEMA DJ
 let queue = [];
 let history = [];
 let nowPlaying = null;
 
 const DATA_FILE = path.join(__dirname, "data.json");
-
-// ============================
-// 💾 CARGAR / GUARDAR DATOS
-// ============================
 
 function loadData() {
     try {
@@ -55,11 +50,12 @@ function saveData() {
 }
 
 // ============================
-// 🔐 AUTENTICACIÓN USUARIO SPOTIFY
+// 🔐 AUTENTICACIÓN CON PERMISOS DE CONTROL
 // ============================
 
 app.get("/login", (req, res) => {
-    const scope = "user-read-currently-playing user-read-playback-state";
+    // Se agregan scopes de modificación de reproducción
+    const scope = "user-read-currently-playing user-read-playback-state user-modify-playback-state";
     const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${CLIENT_ID}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
     res.redirect(authUrl);
 });
@@ -90,7 +86,7 @@ app.get("/callback", async (req, res) => {
             userAccessToken = data.access_token;
             userRefreshToken = data.refresh_token;
             saveData();
-            res.send("<h1>¡Remotify conectado con tu Spotify con éxito! 🎉</h1><p>Ya puedes cerrar esta ventana y volver a la app.</p>");
+            res.send("<h1>¡Remotify vinculado con permisos de control! 🎉</h1><p>Ya puedes enviar canciones directamente a tu Spotify.</p>");
         } else {
             res.status(400).json(data);
         }
@@ -133,7 +129,7 @@ async function refreshUserAccessToken() {
 }
 
 // ============================
-// 🎵 CONSULTA EN TIEMPO REAL
+// 🎵 SINCRO Y CONTROL SPOTIFY
 // ============================
 
 async function updateCurrentlyPlaying() {
@@ -183,8 +179,34 @@ async function updateCurrentlyPlaying() {
 
 setInterval(updateCurrentlyPlaying, 3000);
 
+async function playTrackOnSpotify(uri) {
+    if (!userAccessToken) await refreshUserAccessToken();
+    if (!userAccessToken) return false;
+
+    const res = await fetch("https://api.spotify.com/v1/me/player/play", {
+        method: "PUT",
+        headers: {
+            Authorization: `Bearer ${userAccessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uris: [uri] })
+    });
+    return res.status === 204 || res.status === 200;
+}
+
+async function addTrackToSpotifyQueue(uri) {
+    if (!userAccessToken) await refreshUserAccessToken();
+    if (!userAccessToken) return false;
+
+    const res = await fetch(`https://api.spotify.com/v1/me/player/add-to-queue?uri=${encodeURIComponent(uri)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${userAccessToken}` }
+    });
+    return res.status === 204 || res.status === 200;
+}
+
 // ============================
-// SEARCH & LOGICA DE BÚSQUEDA
+// BÚSQUEDA Y ENDPOINTS
 // ============================
 
 function scoreTrack(track, query) {
@@ -221,10 +243,6 @@ async function searchTrack(query) {
         .sort((a, b) => b.s - a.s)[0].t;
 }
 
-// ============================
-// ENDPOINTS DE LA APP
-// ============================
-
 app.get("/search", async (req, res) => {
     const q = req.query.q;
     const user = req.query.user || "Anónimo";
@@ -245,8 +263,11 @@ app.get("/search", async (req, res) => {
         };
 
         if (mode === "now") {
-            queue.unshift(item);
+            await playTrackOnSpotify(track.uri);
+            if (nowPlaying) history.unshift(nowPlaying);
+            nowPlaying = item;
         } else {
+            await addTrackToSpotifyQueue(track.uri);
             queue.push(item);
         }
 
@@ -278,13 +299,9 @@ app.get("/state", (req, res) => {
     });
 });
 
-// ============================
-// INICIO DEL SERVIDOR
-// ============================
-
 loadData();
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`🔥 Remotify listo en puerto ${PORT}`);
 });
