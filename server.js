@@ -146,7 +146,7 @@ app.get("/callback", async (req, res) => {
             users[userKey].spotifyAccessToken = data.access_token;
             users[userKey].spotifyRefreshToken = data.refresh_token;
             saveUsers();
-            res.send(`<h1>¡Remotify vinculado a ${users[userKey].username}! 🎉</h1><p>Ya puedes volver a tu panel.</p>`);
+            res.redirect(`/?dj=${encodeURIComponent(users[userKey].username)}`);
         } else {
             res.status(400).json(data);
         }
