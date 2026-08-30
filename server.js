@@ -8,23 +8,23 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// 🔑 TUS DATOS
-const CLIENT_ID = "d67ff6f68928459f81948f0de2b4c68b";
-const CLIENT_SECRET = "dca742b376684b799e804f119f053a72";
+// 🔑 CONFIGURACIÓN
+const CLIENT_ID = process.env.CLIENT_ID || "d67ff6f68928459f81948f0de2b4c68b";
+const CLIENT_SECRET = process.env.CLIENT_SECRET || "dca742b376684b799e804f119f053a72";
+const REDIRECT_URI = process.env.REDIRECT_URI || "https://remotify.up.railway.app/callback";
 
-let token = null;
+let userRefreshToken = null;
+let userAccessToken = null;
 
 // 🔥 SISTEMA DJ
 let queue = [];
 let history = [];
 let nowPlaying = null;
-let lastPingTime = Date.now(); // Rastreador de tiempo inactivo
 
-// 📁 archivo de memoria
 const DATA_FILE = path.join(__dirname, "data.json");
 
 // ============================
-// 💾 CARGAR DATOS
+// 💾 CARGAR / GUARDAR DATOS
 // ============================
 
 function loadData() {
@@ -32,28 +32,22 @@ function loadData() {
         if (fs.existsSync(DATA_FILE)) {
             const raw = fs.readFileSync(DATA_FILE);
             const data = JSON.parse(raw);
-
             queue = data.queue || [];
             history = data.history || [];
             nowPlaying = data.nowPlaying || null;
-            lastPingTime = data.lastPingTime || Date.now();
-
-            console.log("💾 Datos cargados");
+            userRefreshToken = data.userRefreshToken || null;
+            console.log("💾 Datos cargados con éxito");
         }
     } catch {
         console.log("❌ Error cargando datos");
     }
 }
 
-// ============================
-// 💾 GUARDAR DATOS
-// ============================
-
 function saveData() {
     try {
         fs.writeFileSync(
             DATA_FILE,
-            JSON.stringify({ queue, history, nowPlaying, lastPingTime }, null, 2)
+            JSON.stringify({ queue, history, nowPlaying, userRefreshToken }, null, 2)
         );
     } catch {
         console.log("❌ Error guardando datos");
@@ -61,30 +55,132 @@ function saveData() {
 }
 
 // ============================
-// TOKEN
+// 🔐 AUTENTICACIÓN USUARIO SPOTIFY
 // ============================
 
-async function getToken() {
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-        method: "POST",
-        headers: {
-            "Authorization":
-                "Basic " +
-                Buffer.from(CLIENT_ID + ":" + CLIENT_SECRET).toString("base64"),
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: "grant_type=client_credentials",
-    });
+app.get("/login", (req, res) => {
+    const scope = "user-read-currently-playing user-read-playback-state";
+    const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${CLIENT_ID}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    res.redirect(authUrl);
+});
 
-    const data = await res.json();
+app.get("/callback", async (req, res) => {
+    const code = req.query.code;
+    if (!code) return res.send("Error al obtener el código de Spotify");
 
-    if (!data.access_token) throw new Error("No token");
+    try {
+        const response = await fetch("https://accounts.spotify.com/api/token", {
+            method: "POST",
+            headers: {
+                "Authorization": "Basic " + Buffer.from(CLIENT_ID + ":" + CLIENT_SECRET).toString("base64"),
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code,
+                redirect_uri: REDIRECT_URI,
+            }),
+        });
 
-    token = data.access_token;
+        const data = await response.json();
+
+        if (data.access_token) {
+            userAccessToken = data.access_token;
+            userRefreshToken = data.refresh_token;
+            saveData();
+            res.send("<h1>¡Remotify conectado con tu Spotify con éxito! 🎉</h1><p>Ya puedes cerrar esta ventana y volver a la app.</p>");
+        } else {
+            res.status(400).json(data);
+        }
+    } catch (err) {
+        res.status(500).send("Error autenticando con Spotify: " + err.message);
+    }
+});
+
+async function refreshUserAccessToken() {
+    if (!userRefreshToken) return null;
+
+    try {
+        const response = await fetch("https://accounts.spotify.com/api/token", {
+            method: "POST",
+            headers: {
+                "Authorization": "Basic " + Buffer.from(CLIENT_ID + ":" + CLIENT_SECRET).toString("base64"),
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: userRefreshToken,
+            }),
+        });
+
+        const data = await response.json();
+        if (data.access_token) {
+            userAccessToken = data.access_token;
+            if (data.refresh_token) {
+                userRefreshToken = data.refresh_token;
+                saveData();
+            }
+            return userAccessToken;
+        }
+    } catch (e) {
+        console.log("❌ Error renovando token:", e);
+    }
+    return null;
 }
 
 // ============================
-// SCORE
+// 🎵 CONSULTA EN TIEMPO REAL
+// ============================
+
+async function updateCurrentlyPlaying() {
+    if (!userAccessToken && userRefreshToken) {
+        await refreshUserAccessToken();
+    }
+    if (!userAccessToken) return;
+
+    try {
+        let res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+            headers: { Authorization: `Bearer ${userAccessToken}` },
+        });
+
+        if (res.status === 401) {
+            const newToken = await refreshUserAccessToken();
+            if (newToken) {
+                res = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+                    headers: { Authorization: `Bearer ${newToken}` },
+                });
+            }
+        }
+
+        if (res.status === 204 || res.status > 400) {
+            nowPlaying = { name: "Offline", user: "Sin música activa" };
+            return;
+        }
+
+        const data = await res.json();
+        if (data && data.item) {
+            const track = data.item;
+            nowPlaying = {
+                uri: track.uri,
+                name: track.name,
+                artist: track.artists.map(a => a.name).join(", "),
+                albumCover: track.album.images[0]?.url || "",
+                isPlaying: data.is_playing,
+                progress_ms: data.progress_ms,
+                duration_ms: track.duration_ms,
+                user: "Spotify Direct"
+            };
+            saveData();
+        }
+    } catch (err) {
+        console.log("Error obteniendo canción actual:", err.message);
+    }
+}
+
+setInterval(updateCurrentlyPlaying, 3000);
+
+// ============================
+// SEARCH & LOGICA DE BÚSQUEDA
 // ============================
 
 function scoreTrack(track, query) {
@@ -101,30 +197,18 @@ function scoreTrack(track, query) {
     return score;
 }
 
-// ============================
-// SEARCH
-// ============================
-
 async function searchTrack(query) {
-    if (!token) await getToken();
+    if (!userAccessToken) await refreshUserAccessToken();
+    if (!userAccessToken) throw new Error("Debes vincular tu cuenta en /login primero.");
 
     const res = await fetch(
         `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`,
         {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${userAccessToken}` },
         }
     );
 
     const data = await res.json();
-
-    if (data.error) {
-        if (data.error.status === 401) {
-            token = null;
-            return searchTrack(query);
-        }
-        throw new Error("Spotify API error");
-    }
-
     const tracks = data.tracks?.items || [];
     if (!tracks.length) return null;
 
@@ -134,7 +218,7 @@ async function searchTrack(query) {
 }
 
 // ============================
-// AGREGAR
+// ENDPOINTS DE LA APP
 // ============================
 
 app.get("/search", async (req, res) => {
@@ -151,6 +235,8 @@ app.get("/search", async (req, res) => {
         const item = {
             uri: track.uri,
             name: track.name,
+            artist: track.artists.map(a => a.name).join(", "),
+            albumCover: track.album.images[0]?.url || "",
             user
         };
 
@@ -161,96 +247,40 @@ app.get("/search", async (req, res) => {
         }
 
         saveData();
-
         res.json({ ok: true, item });
-
-    } catch {
-        res.status(500).json({ error: "fail" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
-
-// ============================
-// SIGUIENTE
-// ============================
 
 app.get("/next", (req, res) => {
     if (!queue.length) return res.json({});
 
     const next = queue.shift();
-
     nowPlaying = next;
     history.unshift(next);
 
     if (history.length > 20) history.pop();
-
     saveData();
 
     res.json(next);
 });
 
-// ============================
-// 🔥 NUEVO: UPDATE REAL
-// ============================
-
-app.post("/update-playing", (req, res) => {
-    const { name, artist } = req.body;
-
-    if (name) {
-        nowPlaying = {
-            name,
-            user: artist || "Desconocido" // Reemplazamos "Spotify" por el nombre del artista
-        };
-        lastPingTime = Date.now(); // Reseteamos el reloj
-        saveData();
-    }
-
-    res.json({ ok: true });
-});
-
-// ============================
-// ESTADO
-// ============================
-
 app.get("/state", (req, res) => {
-    const now = Date.now();
-    const diffMs = now - lastPingTime;
-    const tenMinsMs = 10 * 60 * 1000; // 10 minutos en milisegundos
-
-    let currentPlaying = nowPlaying;
-
-    // Si pasaron más de 10 minutos desde el último ping
-    if (diffMs >= tenMinsMs) {
-        const diffMins = Math.floor(diffMs / 60000);
-        let timeOfflineStr = "";
-
-        if (diffMins < 60) {
-            timeOfflineStr = `${diffMins} mins`;
-        } else {
-            const diffHours = Math.floor(diffMins / 60);
-            const remMins = diffMins % 60;
-            timeOfflineStr = `${diffHours} hora(s)` + (remMins > 0 ? ` ${remMins} mins` : "");
-        }
-
-        // Sobrescribimos el objeto que se envía a la web temporalmente
-        currentPlaying = {
-            name: "Offline",
-            user: timeOfflineStr
-        };
-    }
-
     res.json({
-        nowPlaying: currentPlaying,
+        nowPlaying,
         queue,
         history
     });
 });
 
 // ============================
-// START
+// INICIO DEL SERVIDOR
 // ============================
 
 loadData();
 
-app.listen(3000, "0.0.0.0", () => {
-    console.log("🔥 DJ Server con memoria + realtime + timeout");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🔥 Remotify listo en puerto ${PORT}`);
 });
