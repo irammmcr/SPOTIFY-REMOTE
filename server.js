@@ -9,8 +9,8 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 // 🔑 CONFIGURACIÓN
-const CLIENT_ID = process.env.CLIENT_ID || "d67ff6f68928459f81948f0de2b4c68b";
-const CLIENT_SECRET = process.env.CLIENT_SECRET || "dca742b376684b799e804f119f053a72";
+const CLIENT_ID = process.env.CLIENT_ID || "5c6b12721f854e4ca3e00ea6c432b62f";
+const CLIENT_SECRET = process.env.CLIENT_SECRET || "1dd36b3cff78423b9363787733c89267";
 const REDIRECT_URI = process.env.REDIRECT_URI || "https://remotify.up.railway.app/callback";
 
 let userRefreshToken = null;
