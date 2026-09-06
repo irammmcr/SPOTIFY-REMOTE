@@ -18,8 +18,12 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// Inicialización de la tabla de usuarios
+// Inicialización de la tabla de usuarios con manejo de errores
 async function initDB() {
+    if (!process.env.DATABASE_URL) {
+        console.error("ALERTA: DATABASE_URL no está definida en las variables de entorno.");
+        return;
+    }
     try {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
@@ -31,7 +35,7 @@ async function initDB() {
         `);
         console.log("Base de datos PostgreSQL lista.");
     } catch (err) {
-        console.error("Error al inicializar la BD:", err);
+        console.error("Error al inicializar la BD:", err.message);
     }
 }
 initDB();
@@ -57,15 +61,26 @@ function getRoom(username) {
 }
 
 async function getUser(username) {
-    const res = await pool.query("SELECT * FROM users WHERE LOWER(username) = $1", [username.toLowerCase()]);
-    return res.rows[0] || null;
+    if (!process.env.DATABASE_URL) return null;
+    try {
+        const res = await pool.query("SELECT * FROM users WHERE LOWER(username) = $1", [username.toLowerCase()]);
+        return res.rows[0] || null;
+    } catch (err) {
+        console.error("Error al consultar usuario:", err.message);
+        return null;
+    }
 }
 
 async function saveUserTokens(username, accessToken, refreshToken) {
-    await pool.query(
-        `UPDATE users SET spotify_access_token = $1, spotify_refresh_token = $2 WHERE LOWER(username) = $3`,
-        [accessToken, refreshToken, username.toLowerCase()]
-    );
+    if (!process.env.DATABASE_URL) return;
+    try {
+        await pool.query(
+            `UPDATE users SET spotify_access_token = $1, spotify_refresh_token = $2 WHERE LOWER(username) = $3`,
+            [accessToken, refreshToken, username.toLowerCase()]
+        );
+    } catch (err) {
+        console.error("Error guardando tokens:", err.message);
+    }
 }
 
 async function refreshSpotifyToken(username) {
@@ -210,9 +225,13 @@ app.get("/login-spotify", async (req, res) => {
     const username = req.query.username;
     if (!username) return res.send("Debes indicar un usuario para vincular Spotify.");
 
-    const existing = await getUser(username);
-    if (!existing) {
-        await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, ""]);
+    try {
+        const existing = await getUser(username);
+        if (!existing) {
+            await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, ""]);
+        }
+    } catch (err) {
+        console.error("Error asegurando usuario en login-spotify:", err.message);
     }
 
     const scope = "user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-private";
