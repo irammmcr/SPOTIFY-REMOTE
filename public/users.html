@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remotify - Community</title>
+    <link href="https://fonts.googleapis.com/css2?family=Koulen&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Akira';
+            src: url('Akira.otf') format('opentype');
+        }
+
+        :root {
+            --bg-main: #121212;
+            --purple-dark: #1D131F;
+            --purple-light: #7A5083;
+            --pink-light: #EAD2EF;
+            --pink-text: #8B6F91;
+            --green-online: #34C759;
+            --yellow-paused: #FFCC00;
+            --grey-offline: #B3B0B0;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: white;
+            font-family: 'Koulen', sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 393px;
+            min-height: 100vh;
+            background-color: var(--purple-dark);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .page-title {
+            font-family: 'Akira', sans-serif;
+            font-size: 22px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: white;
+        }
+
+        /* CARD DE USUARIO DESTACADO (PROPIO) */
+        .my-card {
+            background: rgba(122, 80, 131, 0.3);
+            border: 2px solid var(--purple-light);
+            border-radius: 15px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            margin-bottom: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+
+        .my-card .avatar-box img {
+            width: 80px;
+            height: 80px;
+        }
+
+        .my-card .user-name {
+            font-size: 24px;
+        }
+
+        .my-card .song-title {
+            font-size: 16px;
+        }
+
+        /* LISTA GENERAL DE AMIGOS */
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user-card {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .user-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .avatar-box {
+            position: relative;
+            margin-right: 15px;
+        }
+
+        .avatar-box img {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--grey-offline);
+        }
+
+        /* BORDES SEGÚN ESTADO */
+        .avatar-box img.online { border-color: var(--green-online); }
+        .avatar-box img.paused { border-color: var(--yellow-paused); }
+
+        .user-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .user-name {
+            font-family: 'Akira', sans-serif;
+            font-size: 16px;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-line.online { color: var(--green-online); }
+        .status-line.paused { color: var(--yellow-paused); }
+        .status-line.offline { color: var(--grey-offline); }
+
+        .song-title {
+            color: var(--pink-light);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="page-title">REMOTIFY FRIENDS</h1>
+
+    <!-- TARJETA DEL USUARIO LOCAL -->
+    <div id="myUserContainer"></div>
+
+    <!-- LISTA DE DEMÁS USUARIOS -->
+    <div class="user-list" id="usersContainer"></div>
+</div>
+
+<script>
+    const me = localStorage.getItem('remotify_dj');
+
+    async function loadCommunity() {
+        try {
+            const res = await fetch('/api/users/community');
+            const users = await res.json();
+            
+            const myContainer = document.getElementById("myUserContainer");
+            const listContainer = document.getElementById("usersContainer");
+
+            listContainer.innerHTML = "";
+            myContainer.innerHTML = "";
+
+            users.forEach(u => {
+                const isMe = me && u.username.toLowerCase() === me.toLowerCase();
+                const cardHtml = renderUserCard(u, isMe);
+
+                if (isMe) {
+                    myContainer.innerHTML = cardHtml;
+                } else {
+                    listContainer.innerHTML += cardHtml;
+                }
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function renderUserCard(user, isMe) {
+        let statusClass = "offline";
+        let stateText = "Offline";
+
+        if (user.nowPlaying && user.nowPlaying.isPlaying) {
+            statusClass = "online";
+            stateText = `${user.nowPlaying.name} - ${user.nowPlaying.artist}`;
+        } else if (user.nowPlaying && !user.nowPlaying.isPlaying && !user.isOffline) {
+            statusClass = "paused";
+            stateText = `${user.nowPlaying.name} - ${user.nowPlaying.artist}`;
+        } else if (user.offlineTimeStr) {
+            stateText = `Active ${user.offlineTimeStr} ago`;
+        }
+
+        return `
+            <div class="${isMe ? 'my-card' : 'user-card'}" onclick="window.location.href='/${user.username}'">
+                <div class="avatar-box">
+                    <img src="${user.djAvatar || 'default-avatar.png'}" class="${statusClass}" alt="${user.username}">
+                </div>
+                <div class="user-info">
+                    <h2 class="user-name">${user.username.toUpperCase()}</h2>
+                    <div class="status-line ${statusClass}">
+                        ${statusClass === 'online' ? '🎧 ' : ''} 
+                        <span class="song-title">${stateText}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    setInterval(loadCommunity, 5000);
+    loadCommunity();
+</script>
+</body>
+</html>
