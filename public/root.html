@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Remotify</title>
+</head>
+<body>
+    <script>
+        const localUser = localStorage.getItem('remotify_dj');
+        
+        if (!localUser) {
+            // Usuario nuevo sin cuenta -> va a Login / Spotify Auth
+            window.location.href = '/login';
+        } else {
+            // Usuario con cuenta -> directo a la lista de usuarios
+            window.location.href = '/users';
+        }
+    </script>
+</body>
+</html>
