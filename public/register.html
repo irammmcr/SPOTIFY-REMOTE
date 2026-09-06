@@ -42,7 +42,7 @@
                 spotBtn.href = `/login-spotify?username=${encodeURIComponent(data.username)}`;
                 spotBtn.style.display = "block";
                 
-                localStorage.setItem("remotify_dj", data.username);
+                localStorage.setItem("remotify_user", data.username);
             } else {
                 document.getElementById("msg").innerText = data.error || "Error al registrarse";
             }
