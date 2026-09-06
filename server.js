@@ -30,10 +30,13 @@ async function initDB() {
                 username VARCHAR(50) PRIMARY KEY,
                 password TEXT NOT NULL,
                 spotify_access_token TEXT,
-                spotify_refresh_token TEXT
+                spotify_refresh_token TEXT,
+                spotify_avatar_url TEXT
             );
         `);
-        console.log("Base de datos PostgreSQL lista.");
+        // Asegura que la columna existe si la tabla ya había sido creada antes
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS spotify_avatar_url TEXT;`);
+        console.log("Base de datos PostgreSQL lista con columna de avatar.");
     } catch (err) {
         console.error("Error al inicializar la BD:", err.message);
     }
@@ -83,6 +86,18 @@ async function saveUserTokens(username, accessToken, refreshToken) {
     }
 }
 
+async function saveUserAvatar(username, avatarUrl) {
+    if (!process.env.DATABASE_URL || !avatarUrl) return;
+    try {
+        await pool.query(
+            `UPDATE users SET spotify_avatar_url = $1 WHERE LOWER(username) = $2`,
+            [avatarUrl, username.toLowerCase()]
+        );
+    } catch (err) {
+        console.error("Error al guardar avatar:", err.message);
+    }
+}
+
 async function refreshSpotifyToken(username) {
     const user = await getUser(username);
     if (!user || !user.spotify_refresh_token) return null;
@@ -109,77 +124,86 @@ async function refreshSpotifyToken(username) {
             return data.access_token;
         }
     } catch (e) {
-        console.error("Error refrescando token para", username, e);
+        console.error("Error refrescando token para", username, e.message);
     }
     return null;
 }
 
 async function spotifyApiRequest(username, endpoint, method = "GET", body = null) {
-    const user = await getUser(username);
-    let token = user?.spotify_access_token;
-    if (!token) return null;
+    try {
+        const user = await getUser(username);
+        let token = user?.spotify_access_token;
+        if (!token) return null;
 
-    let options = {
-        method,
-        headers: { "Authorization": `Bearer ${token}` }
-    };
-    if (body) {
-        options.headers["Content-Type"] = "application/json";
-        options.body = JSON.stringify(body);
-    }
-
-    let res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
-    
-    if (res.status === 401) {
-        token = await refreshSpotifyToken(username);
-        if (token) {
-            options.headers["Authorization"] = `Bearer ${token}`;
-            res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
+        let options = {
+            method,
+            headers: { "Authorization": `Bearer ${token}` }
+        };
+        if (body) {
+            options.headers["Content-Type"] = "application/json";
+            options.body = JSON.stringify(body);
         }
+
+        let res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
+        
+        if (res.status === 401) {
+            token = await refreshSpotifyToken(username);
+            if (token) {
+                options.headers["Authorization"] = `Bearer ${token}`;
+                res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
+            }
+        }
+        return res;
+    } catch (e) {
+        console.error("Error en spotifyApiRequest:", e.message);
+        return null;
     }
-    return res;
 }
 
 async function updateCurrentlyPlayingForUser(username) {
-    const room = getRoom(username);
-    
-    const timeInactiveMs = Date.now() - room.lastActive;
-    const minsInactive = Math.floor(timeInactiveMs / 60000);
-    room.isOffline = minsInactive >= 15;
-    
-    if (minsInactive >= 60) {
-        room.offlineTimeStr = Math.floor(minsInactive / 60) + " HOURS";
-    } else {
-        room.offlineTimeStr = minsInactive + " MINS";
-    }
-
-    const res = await spotifyApiRequest(username, "/me/player/currently-playing");
-    if (!res) return;
-
-    if (res.status === 204 || res.status > 400) {
-        if (room.nowPlaying) room.nowPlaying.isPlaying = false;
-        return;
-    }
-
-    const data = await res.json();
-    if (data && data.item) {
-        const track = data.item;
+    try {
+        const room = getRoom(username);
         
-        if (data.is_playing) {
-            room.lastActive = Date.now();
-            room.isOffline = false;
+        const timeInactiveMs = Date.now() - room.lastActive;
+        const minsInactive = Math.floor(timeInactiveMs / 60000);
+        room.isOffline = minsInactive >= 15;
+        
+        if (minsInactive >= 60) {
+            room.offlineTimeStr = Math.floor(minsInactive / 60) + " HOURS";
+        } else {
+            room.offlineTimeStr = minsInactive + " MINS";
         }
 
-        room.nowPlaying = {
-            uri: track.uri,
-            name: track.name,
-            artist: track.artists.map(a => a.name).join(", "),
-            albumCover: track.album?.images[0]?.url || "",
-            isPlaying: data.is_playing,
-            progress_ms: data.progress_ms,
-            duration_ms: track.duration_ms,
-            user: room.nowPlaying ? room.nowPlaying.user : "Spotify Direct"
-        };
+        const res = await spotifyApiRequest(username, "/me/player/currently-playing");
+        if (!res) return;
+
+        if (res.status === 204 || res.status > 400) {
+            if (room.nowPlaying) room.nowPlaying.isPlaying = false;
+            return;
+        }
+
+        const data = await res.json();
+        if (data && data.item) {
+            const track = data.item;
+            
+            if (data.is_playing) {
+                room.lastActive = Date.now();
+                room.isOffline = false;
+            }
+
+            room.nowPlaying = {
+                uri: track.uri,
+                name: track.name,
+                artist: track.artists.map(a => a.name).join(", "),
+                albumCover: track.album?.images[0]?.url || "",
+                isPlaying: data.is_playing,
+                progress_ms: data.progress_ms,
+                duration_ms: track.duration_ms,
+                user: room.nowPlaying ? room.nowPlaying.user : "Spotify Direct"
+            };
+        }
+    } catch (e) {
+        console.error("Error actualizando reproduccion:", e.message);
     }
 }
 
@@ -232,7 +256,7 @@ app.post("/api/login", async (req, res) => {
 
 app.get("/api/users/community", async (req, res) => {
     try {
-        const dbRes = await pool.query("SELECT username FROM users");
+        const dbRes = await pool.query("SELECT username, spotify_avatar_url FROM users");
         const allUsers = dbRes.rows;
 
         const communityList = await Promise.all(
@@ -241,7 +265,7 @@ app.get("/api/users/community", async (req, res) => {
                 const room = getRoom(u.username);
                 return {
                     username: u.username,
-                    djAvatar: room.djAvatar || "default-avatar.png",
+                    djAvatar: room.djAvatar || u.spotify_avatar_url || "default-avatar.png",
                     nowPlaying: room.nowPlaying,
                     isOffline: room.isOffline,
                     offlineTimeStr: room.offlineTimeStr
@@ -311,10 +335,12 @@ app.get("/callback", async (req, res) => {
                 const profileData = await profileRes.json();
                 const room = getRoom(username);
                 if (profileData.images && profileData.images.length > 0) {
-                    room.djAvatar = profileData.images[0].url;
+                    const avatarUrl = profileData.images[0].url;
+                    room.djAvatar = avatarUrl;
+                    await saveUserAvatar(username, avatarUrl);
                 }
             } catch (e) {
-                console.log("Error obteniendo avatar del DJ");
+                console.log("Error obteniendo avatar del DJ:", e.message);
             }
 
             res.redirect(`/users`);
@@ -327,21 +353,29 @@ app.get("/callback", async (req, res) => {
 });
 
 app.get("/api/dj/:username/state", async (req, res) => {
-    const username = req.params.username;
-    const user = await getUser(username);
-    if (!user || !user.spotify_access_token) {
-        return res.json({ error: "DJ no encontrado o no vinculado." });
-    }
+    try {
+        const username = req.params.username;
+        const user = await getUser(username);
+        if (!user || !user.spotify_access_token) {
+            return res.json({ error: "DJ no encontrado o no vinculado." });
+        }
 
-    await updateCurrentlyPlayingForUser(username);
-    const room = getRoom(username);
-    
-    const topPlayersArray = Object.values(room.stats).sort((a, b) => b.tracks - a.tracks).slice(0, 3);
-    
-    res.json({
-        ...room,
-        topPlayers: topPlayersArray
-    });
+        await updateCurrentlyPlayingForUser(username);
+        const room = getRoom(username);
+
+        if (!room.djAvatar && user.spotify_avatar_url) {
+            room.djAvatar = user.spotify_avatar_url;
+        }
+
+        const topPlayersArray = Object.values(room.stats).sort((a, b) => b.tracks - a.tracks).slice(0, 3);
+        
+        res.json({
+            ...room,
+            topPlayers: topPlayersArray
+        });
+    } catch (e) {
+        res.status(500).json({ error: "Error procesando la solicitud del DJ." });
+    }
 });
 
 app.get("/api/dj/:username/search", async (req, res) => {
@@ -428,10 +462,13 @@ app.get("/:username", (req, res) => {
         return res.status(404).send("Ruta no encontrada");
     }
 
-    // Servir directamente profile.html desde la carpeta public
     res.sendFile(path.join(__dirname, "public", "profile.html"), (err) => {
         if (err) {
             res.status(404).send("Perfil no encontrado");
         }
     });
+});
+
+app.listen(PORT, () => {
+    console.log(`Remotify Server corriendo en el puerto ${PORT}`);
 });
