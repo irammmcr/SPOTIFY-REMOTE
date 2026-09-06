@@ -183,15 +183,24 @@ async function updateCurrentlyPlayingForUser(username) {
     }
 }
 
-// RUTAS HTTP
+// RUTAS VISTAS HTML
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "register.html"));
+    res.sendFile(path.join(__dirname, "public", "root.html"));
 });
 
 app.get("/login", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
+app.get("/register", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "register.html"));
+});
+
+app.get("/users", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "users.html"));
+});
+
+// API ENDPOINTS
 app.post("/api/register", async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.json({ ok: false, error: "Llena todos los campos" });
@@ -218,6 +227,32 @@ app.post("/api/login", async (req, res) => {
         }
     } catch (e) {
         res.json({ ok: false, error: "Error de servidor al iniciar sesión" });
+    }
+});
+
+app.get("/api/users/community", async (req, res) => {
+    try {
+        const dbRes = await pool.query("SELECT username FROM users");
+        const allUsers = dbRes.rows;
+
+        const communityList = await Promise.all(
+            allUsers.map(async (u) => {
+                await updateCurrentlyPlayingForUser(u.username);
+                const room = getRoom(u.username);
+                return {
+                    username: u.username,
+                    djAvatar: room.djAvatar || "default-avatar.png",
+                    nowPlaying: room.nowPlaying,
+                    isOffline: room.isOffline,
+                    offlineTimeStr: room.offlineTimeStr
+                };
+            })
+        );
+
+        res.json(communityList);
+    } catch (e) {
+        console.error("Error obteniendo usuarios de la comunidad:", e.message);
+        res.status(500).json({ error: "Error de servidor al cargar comunidad" });
     }
 });
 
@@ -282,7 +317,7 @@ app.get("/callback", async (req, res) => {
                 console.log("Error obteniendo avatar del DJ");
             }
 
-            res.redirect(`/${encodeURIComponent(username)}`);
+            res.redirect(`/users`);
         } else {
             res.send("No se pudo obtener el token.");
         }
@@ -370,9 +405,10 @@ app.get("/api/dj/:username/search", async (req, res) => {
     }
 });
 
+// RUTA DINÁMICA DE PERFIL (Mantenida al final)
 app.get("/:username", (req, res) => {
     const username = req.params.username;
-    const reservedRoutes = ["login", "register", "callback", "login-spotify", "api", "index.html", "register.html", "login.html"];
+    const reservedRoutes = ["login", "register", "users", "callback", "login-spotify", "api", "index.html", "register.html", "login.html", "users.html", "root.html"];
     
     if (reservedRoutes.includes(username.toLowerCase())) {
         return res.status(404).send("Ruta no encontrada");
