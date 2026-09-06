@@ -1,39 +1,40 @@
 const express = require("express");
-const fs = require("fs");
 const path = require("path");
+const { Pool } = require("pg");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 const CLIENT_ID = process.env.CLIENT_ID || "5c6b12721f854e4ca3e00ea6c432b62f"; 
 const CLIENT_SECRET = process.env.CLIENT_SECRET || "1dd36b3cff78423b9363787733c89267";
-const REDIRECT_URI = process.env.REDIRECT_URI || `https://remotify.up.railway.app/callback`;
+const REDIRECT_URI = process.env.REDIRECT_URI || "https://remotify.up.railway.app/callback";
 
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// Manejo seguro de users.json
-const USERS_FILE = path.join(__dirname, "users.json");
-let users = {};
+// Conexión a PostgreSQL
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-try {
-    if (fs.existsSync(USERS_FILE)) {
-        users = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-    } else {
-        fs.writeFileSync(USERS_FILE, JSON.stringify({}), "utf8");
-    }
-} catch (e) {
-    console.error("Error cargando users.json:", e);
-    users = {};
-}
-
-function saveUsers() {
+// Inicialización de la tabla de usuarios
+async function initDB() {
     try {
-        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
-    } catch (e) {
-        console.error("Error guardando users.json:", e);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                username VARCHAR(50) PRIMARY KEY,
+                password TEXT NOT NULL,
+                spotify_access_token TEXT,
+                spotify_refresh_token TEXT
+            );
+        `);
+        console.log("Base de datos PostgreSQL lista.");
+    } catch (err) {
+        console.error("Error al inicializar la BD:", err);
     }
 }
+initDB();
 
 const rooms = {};
 
@@ -55,13 +56,25 @@ function getRoom(username) {
     return rooms[userKey];
 }
 
-async function refreshSpotifyToken(userKey) {
-    const user = users[userKey];
-    if (!user || !user.spotifyRefreshToken) return null;
+async function getUser(username) {
+    const res = await pool.query("SELECT * FROM users WHERE LOWER(username) = $1", [username.toLowerCase()]);
+    return res.rows[0] || null;
+}
+
+async function saveUserTokens(username, accessToken, refreshToken) {
+    await pool.query(
+        `UPDATE users SET spotify_access_token = $1, spotify_refresh_token = $2 WHERE LOWER(username) = $3`,
+        [accessToken, refreshToken, username.toLowerCase()]
+    );
+}
+
+async function refreshSpotifyToken(username) {
+    const user = await getUser(username);
+    if (!user || !user.spotify_refresh_token) return null;
 
     const params = new URLSearchParams();
     params.append("grant_type", "refresh_token");
-    params.append("refresh_token", user.spotifyRefreshToken);
+    params.append("refresh_token", user.spotify_refresh_token);
 
     const authHeader = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
 
@@ -76,19 +89,19 @@ async function refreshSpotifyToken(userKey) {
         });
         const data = await res.json();
         if (data.access_token) {
-            users[userKey].spotifyAccessToken = data.access_token;
-            if (data.refresh_token) users[userKey].spotifyRefreshToken = data.refresh_token;
-            saveUsers();
+            const newRefreshToken = data.refresh_token || user.spotify_refresh_token;
+            await saveUserTokens(username, data.access_token, newRefreshToken);
             return data.access_token;
         }
     } catch (e) {
-        console.error("Error refrescando token para", userKey, e);
+        console.error("Error refrescando token para", username, e);
     }
     return null;
 }
 
-async function spotifyApiRequest(userKey, endpoint, method = "GET", body = null) {
-    let token = users[userKey]?.spotifyAccessToken;
+async function spotifyApiRequest(username, endpoint, method = "GET", body = null) {
+    const user = await getUser(username);
+    let token = user?.spotify_access_token;
     if (!token) return null;
 
     let options = {
@@ -103,7 +116,7 @@ async function spotifyApiRequest(userKey, endpoint, method = "GET", body = null)
     let res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
     
     if (res.status === 401) {
-        token = await refreshSpotifyToken(userKey);
+        token = await refreshSpotifyToken(username);
         if (token) {
             options.headers["Authorization"] = `Bearer ${token}`;
             res = await fetch(`https://api.spotify.com/v1${endpoint}`, options);
@@ -112,8 +125,8 @@ async function spotifyApiRequest(userKey, endpoint, method = "GET", body = null)
     return res;
 }
 
-async function updateCurrentlyPlayingForUser(userKey) {
-    const room = getRoom(userKey);
+async function updateCurrentlyPlayingForUser(username) {
+    const room = getRoom(username);
     
     const timeInactiveMs = Date.now() - room.lastActive;
     const minsInactive = Math.floor(timeInactiveMs / 60000);
@@ -125,7 +138,7 @@ async function updateCurrentlyPlayingForUser(userKey) {
         room.offlineTimeStr = minsInactive + " MINS";
     }
 
-    const res = await spotifyApiRequest(userKey, "/me/player/currently-playing");
+    const res = await spotifyApiRequest(username, "/me/player/currently-playing");
     if (!res) return;
 
     if (res.status === 204 || res.status > 400) {
@@ -155,48 +168,51 @@ async function updateCurrentlyPlayingForUser(userKey) {
     }
 }
 
-// RUTA RAÍZ: Lleva al registro
+// RUTAS HTTP
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "register.html"));
 });
 
-// RUTAS DE AUTENTICACIÓN
 app.get("/login", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-app.post("/api/register", (req, res) => {
+app.post("/api/register", async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.json({ ok: false, error: "Llena todos los campos" });
 
-    const key = username.toLowerCase();
-    if (users[key]) return res.json({ ok: false, error: "El usuario ya existe" });
+    try {
+        const existing = await getUser(username);
+        if (existing) return res.json({ ok: false, error: "El usuario ya existe" });
 
-    users[key] = { username, password };
-    saveUsers();
-    res.json({ ok: true, username });
-});
-
-app.post("/api/login", (req, res) => {
-    const { username, password } = req.body;
-    const key = (username || "").toLowerCase();
-    const user = users[key];
-
-    if (user && user.password === password) {
-        res.json({ ok: true, username: user.username });
-    } else {
-        res.json({ ok: false, error: "Usuario o contraseña incorrectos" });
+        await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, password]);
+        res.json({ ok: true, username });
+    } catch (e) {
+        res.json({ ok: false, error: "Error de servidor al registrar" });
     }
 });
 
-app.get("/login-spotify", (req, res) => {
+app.post("/api/login", async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const user = await getUser(username || "");
+        if (user && user.password === password) {
+            res.json({ ok: true, username: user.username });
+        } else {
+            res.json({ ok: false, error: "Usuario o contraseña incorrectos" });
+        }
+    } catch (e) {
+        res.json({ ok: false, error: "Error de servidor al iniciar sesión" });
+    }
+});
+
+app.get("/login-spotify", async (req, res) => {
     const username = req.query.username;
     if (!username) return res.send("Debes indicar un usuario para vincular Spotify.");
 
-    const key = username.toLowerCase();
-    if (!users[key]) {
-        users[key] = { username: username };
-        saveUsers();
+    const existing = await getUser(username);
+    if (!existing) {
+        await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, ""]);
     }
 
     const scope = "user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-private";
@@ -211,7 +227,6 @@ app.get("/callback", async (req, res) => {
     if (!code || !state) return res.send("Error en la autenticación.");
 
     const username = decodeURIComponent(state);
-    const userKey = username.toLowerCase();
 
     const params = new URLSearchParams();
     params.append("grant_type", "authorization_code");
@@ -233,17 +248,14 @@ app.get("/callback", async (req, res) => {
         const data = await tokenRes.json();
         
         if (data.access_token) {
-            if (!users[userKey]) users[userKey] = { username: username };
-            users[userKey].spotifyAccessToken = data.access_token;
-            users[userKey].spotifyRefreshToken = data.refresh_token;
-            saveUsers();
+            await saveUserTokens(username, data.access_token, data.refresh_token);
             
             try {
                 const profileRes = await fetch("https://api.spotify.com/v1/me", {
                     headers: { "Authorization": `Bearer ${data.access_token}` }
                 });
                 const profileData = await profileRes.json();
-                const room = getRoom(userKey);
+                const room = getRoom(username);
                 if (profileData.images && profileData.images.length > 0) {
                     room.djAvatar = profileData.images[0].url;
                 }
@@ -251,7 +263,7 @@ app.get("/callback", async (req, res) => {
                 console.log("Error obteniendo avatar del DJ");
             }
 
-            res.redirect(`/${encodeURIComponent(users[userKey].username)}`);
+            res.redirect(`/${encodeURIComponent(username)}`);
         } else {
             res.send("No se pudo obtener el token.");
         }
@@ -260,15 +272,15 @@ app.get("/callback", async (req, res) => {
     }
 });
 
-// API DE DATOS
 app.get("/api/dj/:username/state", async (req, res) => {
-    const userKey = req.params.username.toLowerCase();
-    if (!users[userKey] || !users[userKey].spotifyAccessToken) {
+    const username = req.params.username;
+    const user = await getUser(username);
+    if (!user || !user.spotify_access_token) {
         return res.json({ error: "DJ no encontrado o no vinculado." });
     }
 
-    await updateCurrentlyPlayingForUser(userKey);
-    const room = getRoom(userKey);
+    await updateCurrentlyPlayingForUser(username);
+    const room = getRoom(username);
     
     const topPlayersArray = Object.values(room.stats).sort((a, b) => b.tracks - a.tracks).slice(0, 3);
     
@@ -279,25 +291,26 @@ app.get("/api/dj/:username/state", async (req, res) => {
 });
 
 app.get("/api/dj/:username/search", async (req, res) => {
-    const userKey = req.params.username.toLowerCase();
+    const username = req.params.username;
     const query = req.query.q;
     const visitor = req.query.user || "Anónimo";
     const mode = req.query.mode || "queue";
 
     if (!query) return res.json({ ok: false, error: "Falta término de búsqueda" });
-    if (!users[userKey] || !users[userKey].spotifyAccessToken) {
+    const user = await getUser(username);
+    if (!user || !user.spotify_access_token) {
         return res.json({ ok: false, error: "DJ no disponible" });
     }
 
     try {
-        const searchRes = await spotifyApiRequest(userKey, `/search?q=${encodeURIComponent(query)}&type=track&limit=1`);
+        const searchRes = await spotifyApiRequest(username, `/search?q=${encodeURIComponent(query)}&type=track&limit=1`);
         if (!searchRes) return res.json({ ok: false });
 
         const data = await searchRes.json();
         const track = data.tracks?.items[0];
         if (!track) return res.json({ ok: false });
 
-        const room = getRoom(userKey);
+        const room = getRoom(username);
         const durationMins = Math.round(track.duration_ms / 60000);
 
         if (visitor === "Anónimo") {
@@ -321,14 +334,14 @@ app.get("/api/dj/:username/search", async (req, res) => {
         };
 
         if (mode === "now") {
-            await spotifyApiRequest(userKey, "/me/player/play", "PUT", { uris: [track.uri] });
+            await spotifyApiRequest(username, "/me/player/play", "PUT", { uris: [track.uri] });
             if (room.nowPlaying && room.nowPlaying.user) {
                 room.history.unshift(room.nowPlaying);
             }
             room.nowPlaying = item;
             room.lastActive = Date.now();
         } else {
-            await spotifyApiRequest(userKey, `/me/player/queue?uri=${encodeURIComponent(track.uri)}`, "POST");
+            await spotifyApiRequest(username, `/me/player/queue?uri=${encodeURIComponent(track.uri)}`, "POST");
             room.queue.push(item);
         }
 
@@ -338,7 +351,6 @@ app.get("/api/dj/:username/search", async (req, res) => {
     }
 });
 
-// RUTA DINÁMICA DE PERFILES (remotify.up.railway.app/USUARIO)
 app.get("/:username", (req, res) => {
     const username = req.params.username;
     const reservedRoutes = ["login", "register", "callback", "login-spotify", "api", "index.html", "register.html", "login.html"];
