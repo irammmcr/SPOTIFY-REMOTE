@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -9,7 +8,7 @@
     <style>
         @font-face {
             font-family: 'Akira';
-            src: url('Akira.otf') format('opentype'); /* Asegúrate de tener este archivo */
+            src: url('Akira.otf') format('opentype');
         }
 
         :root {
@@ -130,7 +129,8 @@
             position: absolute;
             top: 0; left: 0; height: 100%;
             background: white;
-            width: 50%; /* Dinámico */
+            width: 0%;
+            transition: width 0.3s ease;
         }
 
         /* --- BOTONES Y MENÚ INFERIOR --- */
@@ -152,7 +152,7 @@
             display: flex;
             justify-content: space-between;
             padding: 0 15px;
-            margin-bottom: -10px; /* Para que conecte con el recuadro */
+            margin-bottom: -10px;
         }
         .tab-btn {
             flex: 1;
@@ -169,9 +169,8 @@
             transition: 0.2s;
         }
         .tab-btn.active {
-            background-color: var(--pink-text);
             opacity: 1;
-            padding-bottom: 20px; /* Conecta con el fondo */
+            padding-bottom: 20px;
         }
 
         .content-box {
@@ -206,13 +205,13 @@
             border: 2px solid white;
             background: #282828;
             margin-bottom: 5px;
+            object-fit: cover;
         }
         .player-name {
             font-family: 'Akira', sans-serif;
             font-size: 12px;
             margin-bottom: 2px;
         }
-        /* CSS Gradients en lugar de PNGs */
         .gold { background: linear-gradient(to right, #BF953F, #FCF6BA, #B38728, #FBF5B7); -webkit-background-clip: text; color: transparent; font-size: 14px; }
         .silver { background: linear-gradient(to right, #B5B5B5, #FFFFFF, #8B8B8B, #E5E5E5); -webkit-background-clip: text; color: transparent; }
         .bronze { background: linear-gradient(to right, #CD7F32, #FFC48C, #A0522D, #EED5B7); -webkit-background-clip: text; color: transparent; font-size: 10px; }
@@ -244,12 +243,13 @@
             padding: 8px;
             border-radius: 8px;
         }
-        .list-item:first-child .item-cover { width: 50px; height: 50px; } /* Next up más grande */
+        .list-item:first-child .item-cover { width: 50px; height: 50px; }
         .item-cover {
             width: 40px; height: 40px;
             border-radius: 4px;
             margin-right: 10px;
             background: #282828;
+            object-fit: cover;
         }
         .item-details { flex: 1; overflow: hidden; }
         .item-title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1; }
@@ -265,6 +265,7 @@
             width: 20px; height: 20px;
             border-radius: 50%;
             margin-right: 5px;
+            object-fit: cover;
         }
 
         /* --- MODAL ADD SONG --- */
@@ -292,7 +293,7 @@
             margin-bottom: 15px;
         }
         .modal-user-info { display: flex; align-items: center; font-family: 'Akira', sans-serif; font-size: 14px;}
-        .modal-user-info img { width: 30px; height: 30px; border-radius: 50%; margin-right: 10px; }
+        .modal-user-info img { width: 30px; height: 30px; border-radius: 50%; margin-right: 10px; object-fit: cover; }
         .anon-toggle {
             background: var(--purple-light);
             color: white;
@@ -339,7 +340,7 @@
     <div class="cover-bg" id="coverBg"></div>
     
     <div class="profile-section">
-        <img src="" id="djAvatar" class="avatar">
+        <img src="default-avatar.png" id="djAvatar" class="avatar" alt="DJ Avatar">
         <h1 class="username" id="djName">USER</h1>
         <div class="status-text" id="statusText">IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span></div>
         
@@ -354,7 +355,7 @@
     <button class="add-song-btn" onclick="openModal()">ADD SONG</button>
 
     <div class="tabs">
-        <button class="tab-btn active" id="btnQueue" onclick="switchTab('queue')">QUEUE</button>
+        <button class="tab-btn" id="btnQueue" onclick="switchTab('queue')">QUEUE</button>
         <button class="tab-btn" id="btnHistory" onclick="switchTab('history')">HISTORY</button>
     </div>
     
@@ -379,25 +380,23 @@
 </div>
 
 <script>
-    // Obtiene el nombre directamente del path (ej. /iram)
-const pathUser = window.location.pathname.replace('/', '').trim();
-const urlParams = new URLSearchParams(window.location.search);
+    const pathUser = window.location.pathname.replace('/', '').trim();
+    const urlParams = new URLSearchParams(window.location.search);
 
-let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
-    let localUser = localStorage.getItem('remotify_dj'); // Usuario que está navegando (visitante loggeado)
+    let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
+    let localUser = localStorage.getItem('remotify_dj');
     let isAnonymous = false;
-    let djState = 'OFFLINE'; // ONLINE, PAUSED, OFFLINE
-    let currentTab = 'top'; // top, queue, history
+    let djState = 'OFFLINE';
+    let currentTab = 'top';
 
     document.getElementById("djName").innerText = currentDJ;
 
-    // Inicializar Modal basado en sesión local
     function initModalUser() {
         const header = document.getElementById("modalHeader");
         if (localUser) {
             header.innerHTML = `
                 <div class="modal-user-info">
-                    <img src="default-avatar.png" id="modalUserAvatar"> 
+                    <img src="default-avatar.png" id="modalUserAvatar" alt="User"> 
                     ${localUser.toUpperCase()}
                 </div>
                 <button class="anon-toggle" id="anonBtn" onclick="toggleAnonymous()">ANONYMOUSLY?</button>
@@ -417,25 +416,21 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
     function openModal() {
         document.getElementById("addModal").style.display = "flex";
         document.getElementById("songSearch").value = "";
-        // Mostrar/Ocultar PLAY NOW según estado
         document.getElementById("btnPlayNow").style.display = (djState === 'ONLINE') ? "block" : "none";
     }
     
     function closeModal() { document.getElementById("addModal").style.display = "none"; }
 
     function switchTab(tab) {
-        currentTab = tab;
-        document.getElementById("btnQueue").classList.toggle("active", tab === 'queue');
-        document.getElementById("btnHistory").classList.toggle("active", tab === 'history');
-        // Si hace clic en la activa para desactivarla, vuelve a Top Players
-        if(tab === 'queue' && !document.getElementById("btnQueue").classList.contains("active")) {
+        if (currentTab === tab) {
             currentTab = 'top';
-            document.getElementById("btnQueue").classList.remove("active");
+        } else {
+            currentTab = tab;
         }
-        if(tab === 'history' && !document.getElementById("btnHistory").classList.contains("active")) {
-            currentTab = 'top';
-            document.getElementById("btnHistory").classList.remove("active");
-        }
+
+        document.getElementById("btnQueue").classList.toggle("active", currentTab === 'queue');
+        document.getElementById("btnHistory").classList.toggle("active", currentTab === 'history');
+        
         renderContent();
     }
 
@@ -452,7 +447,6 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
     function updateUI(data) {
         const now = data.nowPlaying;
         const avatar = document.getElementById("djAvatar");
-        const highlight = document.getElementById("statusHighlight");
         const statusText = document.getElementById("statusText");
         const title = document.getElementById("songTitle");
         const artist = document.getElementById("songArtist");
@@ -464,15 +458,15 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
             avatar.src = data.djAvatar;
         }
 
-        if (now && now.name !== "Offline") {
+        if (now && now.name && now.name !== "Offline") {
             title.innerText = now.name;
-            artist.innerText = now.artist;
+            artist.innerText = now.artist || "";
             if (now.albumCover) bg.style.backgroundImage = `url(${now.albumCover})`;
 
             if (now.isPlaying) {
                 djState = 'ONLINE';
                 avatar.className = "avatar online";
-                statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight online-text">LISTENING NOW:</span>`;
+                statusText.innerHTML = `IS <span class="status-highlight online-text">LISTENING NOW:</span>`;
                 bar.style.display = "block";
                 glow.style.width = "100%";
                 glow.style.opacity = "0.5";
@@ -487,26 +481,25 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
                 
                 if (djState === 'PAUSED') {
                     avatar.className = "avatar paused";
-                    statusText.innerHTML = `WAS <span id="statusHighlight" class="status-highlight paused-text">LISTENING:</span>`;
+                    statusText.innerHTML = `WAS <span class="status-highlight paused-text">LISTENING:</span>`;
                     bar.style.display = "none";
                     glow.style.width = "60%";
                     bg.style.opacity = "1";
                 } else {
-                    // OFFLINE
                     avatar.className = "avatar";
-                    statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span>`;
-                    title.innerText = `ACTIVE ${data.offlineTimeStr} AGO`;
+                    statusText.innerHTML = `IS <span class="status-highlight">OFFLINE.</span>`;
+                    title.innerText = data.offlineTimeStr ? `ACTIVE ${data.offlineTimeStr} AGO` : "";
                     artist.innerText = "";
                     bar.style.display = "none";
-                    bg.style.opacity = "0"; // Quitar portada
+                    bg.style.opacity = "0";
                     glow.style.width = "40%";
                 }
             }
         } else {
             djState = 'OFFLINE';
             avatar.className = "avatar";
-            statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span>`;
-            title.innerText = "";
+            statusText.innerHTML = `IS <span class="status-highlight">OFFLINE.</span>`;
+            title.innerText = data.offlineTimeStr ? `ACTIVE ${data.offlineTimeStr} AGO` : "";
             artist.innerText = "";
             bar.style.display = "none";
             bg.style.opacity = "0";
@@ -522,7 +515,6 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
             const tops = roomData.topPlayers || [];
             let html = `<h2 class="top-players-title">TOP PLAYERS THIS MONTH:</h2><div class="podium">`;
             
-            // Ordenar podio visualmente: Plata (2), Oro (1), Bronce (3)
             const ranks = [
                 { class: 'silver', index: 1 },
                 { class: 'gold', index: 0 },
@@ -534,7 +526,7 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
                 if(p) {
                     html += `
                     <div class="player">
-                        <img src="${p.avatar || 'default-avatar.png'}">
+                        <img src="${p.avatar || 'default-avatar.png'}" alt="${p.name}">
                         <div class="player-name ${r.class}">${p.name}</div>
                         <div class="player-stats">${p.tracks} TRACKS ADDED<br><span class="player-mins">${p.mins} TOTAL MINS</span></div>
                     </div>`;
@@ -547,12 +539,12 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
         } 
         else if (currentTab === 'queue') {
             let html = `<h2 class="list-title">NEXT UP:</h2>`;
-            html += (roomData.queue || []).map(item => renderListItem(item, false)).join("") || "NO QUEUE";
+            html += (roomData.queue || []).map(item => renderListItem(item, false)).join("") || "<p style='text-align:center;'>NO QUEUE</p>";
             box.innerHTML = html;
         } 
         else if (currentTab === 'history') {
             let html = `<h2 class="list-title">HISTORY:</h2>`;
-            html += (roomData.history || []).map(item => renderListItem(item, true)).join("") || "NO HISTORY";
+            html += (roomData.history || []).map(item => renderListItem(item, true)).join("") || "<p style='text-align:center;'>NO HISTORY</p>";
             box.innerHTML = html;
         }
     }
@@ -562,15 +554,16 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
         if(isHistory) {
             reqHtml = `<div class="item-requester" style="color:var(--pink-light);">${item.timeAgo || 'JUST NOW'}</div>`;
         } else {
-            const dispName = item.user === "Anónimo" ? "ANONYMOUS" : item.user;
-            const blurStyle = item.user === "Anónimo" ? `style="filter:blur(2px); background:rgba(0,0,0,0.5); padding:2px 5px; border-radius:5px;"` : "";
-            const avatar = item.userAvatar ? `<img src="${item.userAvatar}">` : '';
+            const isAnon = item.user === "Anónimo" || item.user === "ANONYMOUS";
+            const dispName = isAnon ? "ANONYMOUS" : item.user;
+            const blurStyle = isAnon ? `style="filter:blur(2px); background:rgba(0,0,0,0.5); padding:2px 5px; border-radius:5px;"` : "";
+            const avatar = item.userAvatar ? `<img src="${item.userAvatar}" alt="${dispName}">` : '';
             reqHtml = `<div class="item-requester" ${blurStyle}>${avatar} ${dispName.toUpperCase()}</div>`;
         }
 
         return `
         <div class="list-item">
-            <img src="${item.albumCover || ''}" class="item-cover">
+            <img src="${item.albumCover || 'default-cover.png'}" class="item-cover" alt="Cover">
             <div class="item-details">
                 <div class="item-title">${item.name}</div>
                 <div class="item-artist">${item.artist}</div>
@@ -580,24 +573,30 @@ let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotif
     }
 
     async function submitRequest(mode) {
-        const song = document.getElementById("songSearch").value;
+        const songInput = document.getElementById("songSearch");
+        const song = songInput.value.trim();
         if (!song) return;
 
         let requester = "Anónimo";
         if (localUser && !isAnonymous) {
             requester = localUser;
         } else if (!localUser) {
-            const custom = document.getElementById("customName").value;
-            if(custom) requester = custom;
+            const customInput = document.getElementById("customName");
+            if(customInput && customInput.value.trim()) requester = customInput.value.trim();
         }
 
-        const res = await fetch(`/api/dj/${currentDJ}/search?q=${encodeURIComponent(song)}&user=${encodeURIComponent(requester)}&mode=${mode}`);
-        const data = await res.json();
-        if (data.ok) {
-            closeModal();
-            fetchState();
-        } else {
-            alert("No se encontró la canción o hubo un error.");
+        try {
+            const res = await fetch(`/api/dj/${currentDJ}/search?q=${encodeURIComponent(song)}&user=${encodeURIComponent(requester)}&mode=${mode}`);
+            const data = await res.json();
+            if (data.ok) {
+                closeModal();
+                fetchState();
+            } else {
+                alert("No se encontró la canción o hubo un error.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error al enviar la solicitud.");
         }
     }
 
