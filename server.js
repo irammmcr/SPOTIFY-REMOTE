@@ -405,18 +405,33 @@ app.get("/api/dj/:username/search", async (req, res) => {
     }
 });
 
-// RUTA DINÁMICA DE PERFIL (Mantenida al final)
+// RUTA DINÁMICA DE PERFIL
 app.get("/:username", (req, res) => {
     const username = req.params.username;
-    const reservedRoutes = ["login", "register", "users", "callback", "login-spotify", "api", "index.html", "register.html", "login.html", "users.html", "root.html"];
+    const reservedRoutes = [
+        "login", 
+        "register", 
+        "users", 
+        "callback", 
+        "login-spotify", 
+        "api", 
+        "index.html", 
+        "profile.html", 
+        "register.html", 
+        "login.html", 
+        "users.html", 
+        "root.html", 
+        "favicon.ico"
+    ];
     
     if (reservedRoutes.includes(username.toLowerCase())) {
         return res.status(404).send("Ruta no encontrada");
     }
 
-    res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-app.listen(PORT, () => {
-    console.log(`Remotify Server corriendo en el puerto ${PORT}`);
+    // Servir directamente profile.html desde la carpeta public
+    res.sendFile(path.join(__dirname, "public", "profile.html"), (err) => {
+        if (err) {
+            res.status(404).send("Perfil no encontrado");
+        }
+    });
 });
