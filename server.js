@@ -18,7 +18,7 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// Inicialización de la tabla de usuarios con manejo de errores
+// Inicialización defensiva de la base de datos
 async function initDB() {
     if (!process.env.DATABASE_URL) {
         console.error("ALERTA: DATABASE_URL no está definida en las variables de entorno.");
@@ -79,7 +79,7 @@ async function saveUserTokens(username, accessToken, refreshToken) {
             [accessToken, refreshToken, username.toLowerCase()]
         );
     } catch (err) {
-        console.error("Error guardando tokens:", err.message);
+        console.error("Error al guardar tokens:", err.message);
     }
 }
 
@@ -230,8 +230,8 @@ app.get("/login-spotify", async (req, res) => {
         if (!existing) {
             await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, ""]);
         }
-    } catch (err) {
-        console.error("Error asegurando usuario en login-spotify:", err.message);
+    } catch (e) {
+        console.error("Error asegurando usuario previo a Spotify:", e.message);
     }
 
     const scope = "user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-private";
