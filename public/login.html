@@ -22,12 +22,12 @@
         <p id="msg" style="font-size: 0.8rem; color: #ff5555;"></p>
 
         <a id="spotifyBtn" class="btn-spotify" href="#">🔗 Vincular Spotify de este DJ</a>
-        <a href="/">¿No tienes cuenta? Regístrate</a>
+        <a href="/register">¿No tienes cuenta? Regístrate</a>
     </div>
 
     <script>
         async function login() {
-            const username = document.getElementById("user").value;
+            const username = document.getElementById("user").value.trim();
             const password = document.getElementById("pass").value;
             const res = await fetch("/api/login", {
                 method: "POST",
@@ -42,7 +42,7 @@
                 spotBtn.href = `/login-spotify?username=${encodeURIComponent(data.username)}`;
                 spotBtn.style.display = "block";
                 
-                localStorage.setItem("remotify_dj", data.username);
+                localStorage.setItem("remotify_user", data.username);
             } else {
                 document.getElementById("msg").innerText = data.error || "Error al entrar";
             }
