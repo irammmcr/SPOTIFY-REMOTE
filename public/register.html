@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remotify - Crear Cuenta</title>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #181818; padding: 2rem; border-radius: 12px; width: 300px; text-align: center; }
+        input { width: 90%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #333; background: #282828; color: white; }
+        button { width: 98%; padding: 10px; margin-top: 10px; border-radius: 6px; border: none; background: #7A5083; color: white; font-weight: bold; cursor: pointer; }
+        .btn-spotify { background: #1ed760; color: black; margin-top: 15px; display: none; text-decoration: none; padding: 10px; border-radius: 6px; font-weight: bold; }
+        a { color: #888; font-size: 0.9rem; text-decoration: none; display: block; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Crear Cuenta</h2>
+        <input type="text" id="user" placeholder="Nombre de usuario">
+        <input type="password" id="pass" placeholder="Contraseña">
+        <button onclick="register()">Registrarse</button>
+        <p id="msg" style="font-size: 0.8rem; color: #ff5555;"></p>
+
+        <a id="spotifyBtn" class="btn-spotify" href="#">🔗 Vincular Spotify</a>
+        <a href="/login">¿Ya tienes cuenta? Inicia Sesión</a>
+    </div>
+
+    <script>
+        async function register() {
+            const username = document.getElementById("user").value.trim();
+            const password = document.getElementById("pass").value;
+            const res = await fetch("/api/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                document.getElementById("msg").style.color = "#1db954";
+                document.getElementById("msg").innerText = "¡Cuenta creada con éxito!";
+                const spotBtn = document.getElementById("spotifyBtn");
+                spotBtn.href = `/login-spotify?username=${encodeURIComponent(data.username)}`;
+                spotBtn.style.display = "block";
+                
+                localStorage.setItem("remotify_dj", data.username);
+            } else {
+                document.getElementById("msg").innerText = data.error || "Error al registrarse";
+            }
+        }
+    </script>
+</body>
+</html>
