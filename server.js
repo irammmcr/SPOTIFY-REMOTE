@@ -12,15 +12,27 @@ const REDIRECT_URI = process.env.REDIRECT_URI || `https://remotify.up.railway.ap
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
+// Manejo seguro de users.json
 const USERS_FILE = path.join(__dirname, "users.json");
 let users = {};
 
-if (fs.existsSync(USERS_FILE)) {
-    users = JSON.parse(fs.readFileSync(USERS_FILE));
+try {
+    if (fs.existsSync(USERS_FILE)) {
+        users = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+    } else {
+        fs.writeFileSync(USERS_FILE, JSON.stringify({}), "utf8");
+    }
+} catch (e) {
+    console.error("Error cargando users.json:", e);
+    users = {};
 }
 
 function saveUsers() {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    try {
+        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
+    } catch (e) {
+        console.error("Error guardando users.json:", e);
+    }
 }
 
 const rooms = {};
