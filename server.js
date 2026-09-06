@@ -405,16 +405,27 @@ app.get("/api/dj/:username/search", async (req, res) => {
     }
 });
 
-// RUTA DINÁMICA DE PERFIL (Mantenida al final)
+// RUTA DINÁMICA DE PERFIL
 app.get("/:username", (req, res) => {
     const username = req.params.username;
-    const reservedRoutes = ["login", "register", "users", "callback", "login-spotify", "api", "index.html", "register.html", "login.html", "users.html", "root.html"];
+    const reservedRoutes = ["login", "register", "users", "callback", "login-spotify", "api", "index.html", "profile.html", "register.html", "login.html", "users.html", "root.html", "favicon.ico"];
     
     if (reservedRoutes.includes(username.toLowerCase())) {
         return res.status(404).send("Ruta no encontrada");
     }
 
-    res.sendFile(path.join(__dirname, "public", "index.html"));
+    // Servir el perfil. Si tu plantilla se llama profile.html en public/, enviamos esa.
+    // Si la dejaste como index.html, cámbialo a "index.html"
+    res.sendFile(path.join(__dirname, "public", "profile.html"), (err) => {
+        if (err) {
+            // Respaldar en caso de que aún conserve el nombre index.html
+            res.sendFile(path.join(__dirname, "public", "index.html"), (err2) => {
+                if (err2) {
+                    res.status(404).send("Perfil no encontrado");
+                }
+            });
+        }
+    });
 });
 
 app.listen(PORT, () => {
