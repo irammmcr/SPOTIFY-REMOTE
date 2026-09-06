@@ -379,8 +379,11 @@
 </div>
 
 <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    let currentDJ = urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
+    // Obtiene el nombre directamente del path (ej. /iram)
+const pathUser = window.location.pathname.replace('/', '').trim();
+const urlParams = new URLSearchParams(window.location.search);
+
+let currentDJ = pathUser || urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
     let localUser = localStorage.getItem('remotify_dj'); // Usuario que está navegando (visitante loggeado)
     let isAnonymous = false;
     let djState = 'OFFLINE'; // ONLINE, PAUSED, OFFLINE
@@ -531,7 +534,7 @@
                 if(p) {
                     html += `
                     <div class="player">
-                        <img src="${p.avatar || 'default.png'}">
+                        <img src="${p.avatar || 'default-avatar.png'}">
                         <div class="player-name ${r.class}">${p.name}</div>
                         <div class="player-stats">${p.tracks} TRACKS ADDED<br><span class="player-mins">${p.mins} TOTAL MINS</span></div>
                     </div>`;
