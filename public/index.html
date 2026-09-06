@@ -1,1 +1,605 @@
 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Remotify</title>
+    <link href="https://fonts.googleapis.com/css2?family=Koulen&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'Akira';
+            src: url('Akira.otf') format('opentype'); /* Asegúrate de tener este archivo */
+        }
+
+        :root {
+            --bg-main: #121212;
+            --purple-dark: #1D131F;
+            --purple-light: #7A5083;
+            --pink-light: #EAD2EF;
+            --pink-text: #8B6F91;
+            --green-online: #34C759;
+            --yellow-paused: #FFCC00;
+            --grey-offline: #B3B0B0;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: white;
+            font-family: 'Koulen', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 393px;
+            min-height: 100vh;
+            position: relative;
+            background-color: var(--purple-dark);
+            overflow-x: hidden;
+        }
+
+        /* --- ESTADO DEL USUARIO --- */
+        .cover-bg {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 191.5px;
+            background-size: cover;
+            background-position: center;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%);
+            -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 100%);
+            z-index: 0;
+            transition: all 0.5s ease;
+        }
+
+        .profile-section {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 60px;
+            text-align: center;
+        }
+
+        .avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 4px solid var(--grey-offline);
+            object-fit: cover;
+            background: #282828;
+            transition: border-color 0.3s ease;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .avatar.online { border-color: var(--green-online); box-shadow: 0 0 20px rgba(52,199,89,0.4); }
+        .avatar.paused { border-color: var(--yellow-paused); box-shadow: 0 0 20px rgba(255,204,0,0.4); }
+        
+        .username {
+            font-family: 'Akira', sans-serif;
+            font-size: 28px;
+            margin: 10px 0 0 0;
+            text-transform: uppercase;
+        }
+
+        .status-text {
+            font-size: 18px;
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .status-highlight {
+            color: var(--grey-offline);
+        }
+        .online-text { color: var(--green-online); }
+        .paused-text { color: var(--yellow-paused); }
+
+        .song-info {
+            width: 80%;
+            position: relative;
+            padding: 10px;
+        }
+        .song-glow {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%; height: 40px;
+            background: var(--purple-light);
+            filter: blur(20px);
+            opacity: 0.5;
+            z-index: -1;
+            transition: all 0.3s ease;
+        }
+        
+        .song-title { font-size: 22px; margin: 0; text-transform: uppercase; }
+        .song-artist { font-size: 14px; color: var(--pink-light); letter-spacing: 1px; }
+
+        .playback-bar {
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.2);
+            margin: 5px 0;
+            position: relative;
+            display: none;
+        }
+        .playback-progress {
+            position: absolute;
+            top: 0; left: 0; height: 100%;
+            background: white;
+            width: 50%; /* Dinámico */
+        }
+
+        /* --- BOTONES Y MENÚ INFERIOR --- */
+        .add-song-btn {
+            background-color: var(--purple-light);
+            color: white;
+            font-family: 'Akira', sans-serif;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin: 20px auto;
+            display: block;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 15px;
+            margin-bottom: -10px; /* Para que conecte con el recuadro */
+        }
+        .tab-btn {
+            flex: 1;
+            background-color: var(--pink-text);
+            color: white;
+            font-family: 'Akira', sans-serif;
+            border: none;
+            padding: 15px 10px;
+            font-size: 16px;
+            margin: 0 5px;
+            border-radius: 10px 10px 0 0;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: 0.2s;
+        }
+        .tab-btn.active {
+            background-color: var(--pink-text);
+            opacity: 1;
+            padding-bottom: 20px; /* Conecta con el fondo */
+        }
+
+        .content-box {
+            background-color: var(--pink-text);
+            margin: 0 20px 20px 20px;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 250px;
+        }
+
+        /* --- TOP PLAYERS --- */
+        .top-players-title {
+            font-family: 'Akira', sans-serif;
+            text-align: center;
+            font-size: 18px;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        .podium {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 20px;
+        }
+        .player {
+            text-align: center;
+            flex: 1;
+        }
+        .player img {
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            border: 2px solid white;
+            background: #282828;
+            margin-bottom: 5px;
+        }
+        .player-name {
+            font-family: 'Akira', sans-serif;
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+        /* CSS Gradients en lugar de PNGs */
+        .gold { background: linear-gradient(to right, #BF953F, #FCF6BA, #B38728, #FBF5B7); -webkit-background-clip: text; color: transparent; font-size: 14px; }
+        .silver { background: linear-gradient(to right, #B5B5B5, #FFFFFF, #8B8B8B, #E5E5E5); -webkit-background-clip: text; color: transparent; }
+        .bronze { background: linear-gradient(to right, #CD7F32, #FFC48C, #A0522D, #EED5B7); -webkit-background-clip: text; color: transparent; font-size: 10px; }
+        
+        .player-stats { font-size: 12px; line-height: 1.1; }
+        .player-mins { font-size: 10px; color: var(--pink-light); }
+        .anonymous-stats {
+            text-align: center;
+            font-size: 14px;
+            background: rgba(0,0,0,0.2);
+            padding: 5px;
+            border-radius: 10px;
+            width: fit-content;
+            margin: 0 auto;
+        }
+
+        /* --- LISTAS (QUEUE / HISTORY) --- */
+        .list-title {
+            font-family: 'Akira', sans-serif;
+            font-size: 16px;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .list-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            background: rgba(0,0,0,0.1);
+            padding: 8px;
+            border-radius: 8px;
+        }
+        .list-item:first-child .item-cover { width: 50px; height: 50px; } /* Next up más grande */
+        .item-cover {
+            width: 40px; height: 40px;
+            border-radius: 4px;
+            margin-right: 10px;
+            background: #282828;
+        }
+        .item-details { flex: 1; overflow: hidden; }
+        .item-title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1; }
+        .item-artist { font-size: 12px; color: var(--pink-light); }
+        .item-requester {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            font-family: 'Akira', sans-serif;
+            max-width: 100px;
+        }
+        .item-requester img {
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        /* --- MODAL ADD SONG --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-content {
+            background: var(--purple-dark);
+            width: 90%;
+            max-width: 350px;
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid var(--purple-light);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .modal-user-info { display: flex; align-items: center; font-family: 'Akira', sans-serif; font-size: 14px;}
+        .modal-user-info img { width: 30px; height: 30px; border-radius: 50%; margin-right: 10px; }
+        .anon-toggle {
+            background: var(--purple-light);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            font-family: 'Akira', sans-serif;
+            font-size: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .anon-toggle.active { background: var(--green-online); }
+        
+        .modal-input {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border: none;
+            background: var(--pink-text);
+            color: white;
+            font-family: 'Koulen', sans-serif;
+            font-size: 18px;
+            box-sizing: border-box;
+        }
+        .modal-input::placeholder { color: var(--pink-light); }
+        
+        .modal-actions { display: flex; gap: 10px; margin-top: 10px; }
+        .action-btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: var(--purple-light);
+            color: white;
+            font-family: 'Akira', sans-serif;
+            cursor: pointer;
+        }
+        .close-modal { margin-top: 15px; background: transparent; border: 1px solid var(--pink-light); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="cover-bg" id="coverBg"></div>
+    
+    <div class="profile-section">
+        <img src="" id="djAvatar" class="avatar">
+        <h1 class="username" id="djName">USER</h1>
+        <div class="status-text" id="statusText">IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span></div>
+        
+        <div class="song-info" id="songInfo">
+            <div class="song-glow" id="songGlow"></div>
+            <div class="song-title" id="songTitle"></div>
+            <div class="playback-bar" id="playbackBar"><div class="playback-progress" id="playbackProgress"></div></div>
+            <div class="song-artist" id="songArtist"></div>
+        </div>
+    </div>
+
+    <button class="add-song-btn" onclick="openModal()">ADD SONG</button>
+
+    <div class="tabs">
+        <button class="tab-btn active" id="btnQueue" onclick="switchTab('queue')">QUEUE</button>
+        <button class="tab-btn" id="btnHistory" onclick="switchTab('history')">HISTORY</button>
+    </div>
+    
+    <div class="content-box" id="mainContent">
+        <!-- Contenido dinámico -->
+    </div>
+</div>
+
+<!-- MODAL AÑADIR CANCIÓN -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal-content">
+        <div class="modal-header" id="modalHeader">
+            <!-- Se llena por JS dependiendo si está loggeado -->
+        </div>
+        <input type="text" id="songSearch" class="modal-input" placeholder="SEARCH FOR A SONG...">
+        <div class="modal-actions" id="modalButtons">
+            <button class="action-btn" id="btnPlayNow" onclick="submitRequest('now')">PLAY NOW</button>
+            <button class="action-btn" onclick="submitRequest('queue')">ADD TO QUEUE</button>
+        </div>
+        <button class="action-btn close-modal" onclick="closeModal()">CANCEL</button>
+    </div>
+</div>
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentDJ = urlParams.get('dj') || localStorage.getItem('remotify_dj') || 'iram';
+    let localUser = localStorage.getItem('remotify_dj'); // Usuario que está navegando (visitante loggeado)
+    let isAnonymous = false;
+    let djState = 'OFFLINE'; // ONLINE, PAUSED, OFFLINE
+    let currentTab = 'top'; // top, queue, history
+
+    document.getElementById("djName").innerText = currentDJ;
+
+    // Inicializar Modal basado en sesión local
+    function initModalUser() {
+        const header = document.getElementById("modalHeader");
+        if (localUser) {
+            header.innerHTML = `
+                <div class="modal-user-info">
+                    <img src="default-avatar.png" id="modalUserAvatar"> 
+                    ${localUser.toUpperCase()}
+                </div>
+                <button class="anon-toggle" id="anonBtn" onclick="toggleAnonymous()">ANONYMOUSLY?</button>
+            `;
+        } else {
+            header.innerHTML = `<input type="text" id="customName" class="modal-input" style="margin:0;" placeholder="YOUR NAME (OPTIONAL)">`;
+        }
+    }
+    initModalUser();
+
+    function toggleAnonymous() {
+        isAnonymous = !isAnonymous;
+        const btn = document.getElementById("anonBtn");
+        btn.classList.toggle("active", isAnonymous);
+    }
+
+    function openModal() {
+        document.getElementById("addModal").style.display = "flex";
+        document.getElementById("songSearch").value = "";
+        // Mostrar/Ocultar PLAY NOW según estado
+        document.getElementById("btnPlayNow").style.display = (djState === 'ONLINE') ? "block" : "none";
+    }
+    
+    function closeModal() { document.getElementById("addModal").style.display = "none"; }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.getElementById("btnQueue").classList.toggle("active", tab === 'queue');
+        document.getElementById("btnHistory").classList.toggle("active", tab === 'history');
+        // Si hace clic en la activa para desactivarla, vuelve a Top Players
+        if(tab === 'queue' && !document.getElementById("btnQueue").classList.contains("active")) {
+            currentTab = 'top';
+            document.getElementById("btnQueue").classList.remove("active");
+        }
+        if(tab === 'history' && !document.getElementById("btnHistory").classList.contains("active")) {
+            currentTab = 'top';
+            document.getElementById("btnHistory").classList.remove("active");
+        }
+        renderContent();
+    }
+
+    let roomData = { queue: [], history: [], topPlayers: [], anonCount: 0 };
+
+    async function fetchState() {
+        try {
+            const res = await fetch(`/api/dj/${currentDJ}/state`);
+            roomData = await res.json();
+            updateUI(roomData);
+        } catch (e) { console.error(e); }
+    }
+
+    function updateUI(data) {
+        const now = data.nowPlaying;
+        const avatar = document.getElementById("djAvatar");
+        const highlight = document.getElementById("statusHighlight");
+        const statusText = document.getElementById("statusText");
+        const title = document.getElementById("songTitle");
+        const artist = document.getElementById("songArtist");
+        const bar = document.getElementById("playbackBar");
+        const bg = document.getElementById("coverBg");
+        const glow = document.getElementById("songGlow");
+
+        if (data.djAvatar) {
+            avatar.src = data.djAvatar;
+        }
+
+        if (now && now.name !== "Offline") {
+            title.innerText = now.name;
+            artist.innerText = now.artist;
+            if (now.albumCover) bg.style.backgroundImage = `url(${now.albumCover})`;
+
+            if (now.isPlaying) {
+                djState = 'ONLINE';
+                avatar.className = "avatar online";
+                statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight online-text">LISTENING NOW:</span>`;
+                bar.style.display = "block";
+                glow.style.width = "100%";
+                glow.style.opacity = "0.5";
+                bg.style.opacity = "1";
+                
+                if(now.duration_ms > 0) {
+                    const pct = (now.progress_ms / now.duration_ms) * 100;
+                    document.getElementById("playbackProgress").style.width = `${pct}%`;
+                }
+            } else {
+                djState = data.isOffline ? 'OFFLINE' : 'PAUSED';
+                
+                if (djState === 'PAUSED') {
+                    avatar.className = "avatar paused";
+                    statusText.innerHTML = `WAS <span id="statusHighlight" class="status-highlight paused-text">LISTENING:</span>`;
+                    bar.style.display = "none";
+                    glow.style.width = "60%";
+                    bg.style.opacity = "1";
+                } else {
+                    // OFFLINE
+                    avatar.className = "avatar";
+                    statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span>`;
+                    title.innerText = `ACTIVE ${data.offlineTimeStr} AGO`;
+                    artist.innerText = "";
+                    bar.style.display = "none";
+                    bg.style.opacity = "0"; // Quitar portada
+                    glow.style.width = "40%";
+                }
+            }
+        } else {
+            djState = 'OFFLINE';
+            avatar.className = "avatar";
+            statusText.innerHTML = `IS <span id="statusHighlight" class="status-highlight">OFFLINE.</span>`;
+            title.innerText = "";
+            artist.innerText = "";
+            bar.style.display = "none";
+            bg.style.opacity = "0";
+        }
+        
+        renderContent();
+    }
+
+    function renderContent() {
+        const box = document.getElementById("mainContent");
+        
+        if (currentTab === 'top') {
+            const tops = roomData.topPlayers || [];
+            let html = `<h2 class="top-players-title">TOP PLAYERS THIS MONTH:</h2><div class="podium">`;
+            
+            // Ordenar podio visualmente: Plata (2), Oro (1), Bronce (3)
+            const ranks = [
+                { class: 'silver', index: 1 },
+                { class: 'gold', index: 0 },
+                { class: 'bronze', index: 2 }
+            ];
+
+            ranks.forEach(r => {
+                const p = tops[r.index];
+                if(p) {
+                    html += `
+                    <div class="player">
+                        <img src="${p.avatar || 'default.png'}">
+                        <div class="player-name ${r.class}">${p.name}</div>
+                        <div class="player-stats">${p.tracks} TRACKS ADDED<br><span class="player-mins">${p.mins} TOTAL MINS</span></div>
+                    </div>`;
+                } else {
+                    html += `<div class="player"></div>`;
+                }
+            });
+            html += `</div><div class="anonymous-stats">${roomData.anonCount || 0} ANONYMOUS REQUESTS</div>`;
+            box.innerHTML = html;
+        } 
+        else if (currentTab === 'queue') {
+            let html = `<h2 class="list-title">NEXT UP:</h2>`;
+            html += (roomData.queue || []).map(item => renderListItem(item, false)).join("") || "NO QUEUE";
+            box.innerHTML = html;
+        } 
+        else if (currentTab === 'history') {
+            let html = `<h2 class="list-title">HISTORY:</h2>`;
+            html += (roomData.history || []).map(item => renderListItem(item, true)).join("") || "NO HISTORY";
+            box.innerHTML = html;
+        }
+    }
+
+    function renderListItem(item, isHistory) {
+        let reqHtml = '';
+        if(isHistory) {
+            reqHtml = `<div class="item-requester" style="color:var(--pink-light);">${item.timeAgo || 'JUST NOW'}</div>`;
+        } else {
+            const dispName = item.user === "Anónimo" ? "ANONYMOUS" : item.user;
+            const blurStyle = item.user === "Anónimo" ? `style="filter:blur(2px); background:rgba(0,0,0,0.5); padding:2px 5px; border-radius:5px;"` : "";
+            const avatar = item.userAvatar ? `<img src="${item.userAvatar}">` : '';
+            reqHtml = `<div class="item-requester" ${blurStyle}>${avatar} ${dispName.toUpperCase()}</div>`;
+        }
+
+        return `
+        <div class="list-item">
+            <img src="${item.albumCover || ''}" class="item-cover">
+            <div class="item-details">
+                <div class="item-title">${item.name}</div>
+                <div class="item-artist">${item.artist}</div>
+            </div>
+            ${reqHtml}
+        </div>`;
+    }
+
+    async function submitRequest(mode) {
+        const song = document.getElementById("songSearch").value;
+        if (!song) return;
+
+        let requester = "Anónimo";
+        if (localUser && !isAnonymous) {
+            requester = localUser;
+        } else if (!localUser) {
+            const custom = document.getElementById("customName").value;
+            if(custom) requester = custom;
+        }
+
+        const res = await fetch(`/api/dj/${currentDJ}/search?q=${encodeURIComponent(song)}&user=${encodeURIComponent(requester)}&mode=${mode}`);
+        const data = await res.json();
+        if (data.ok) {
+            closeModal();
+            fetchState();
+        } else {
+            alert("No se encontró la canción o hubo un error.");
+        }
+    }
+
+    setInterval(fetchState, 3000);
+    fetchState();
+</script>
+</body>
+</html>
