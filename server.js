@@ -277,8 +277,22 @@ async function addTrackToSpotifyQueue(userKey, uri) {
 // ============================
 
 app.get("/api/dj/:username/state", (req, res) => {
-    const room = getRoom(req.params.username);
-    res.json(room);
+    function getRoom(username) {
+    const userKey = username.toLowerCase();
+    if (!rooms[userKey]) {
+        rooms[userKey] = { 
+            queue: [], 
+            history: [], 
+            nowPlaying: null,
+            stats: {}, // { "user1": { tracks: 2, mins: 5, avatar: "url" } }
+            anonCount: 0,
+            lastActive: Date.now(),
+            isOffline: false,
+            djAvatar: ""
+        };
+    }
+    return rooms[userKey];
+}
 });
 
 app.get("/api/dj/:username/search", async (req, res) => {
